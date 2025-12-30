@@ -57,7 +57,10 @@ PetscErrorCode Solver::init() {
     // Create Matrix for Jacobian
     Mat J;
     ierr = DMCreateMatrix(dm_, &J); CHKERRQ(ierr);
-    ierr = TSSetIJacobian(ts_, J, J, FormIJacobian, &ctx_); CHKERRQ(ierr);
+    
+    // Use Finite Difference Jacobian (Coloring) - Essential for non-trivial physics without analytical Jacobian
+    ierr = TSSetIJacobian(ts_, J, J, TSComputeIJacobianDefaultColor, &ctx_); CHKERRQ(ierr);
+
     ierr = MatDestroy(&J); CHKERRQ(ierr); 
     
     ierr = TSSetTimeStep(ts_, config_.time.dt); CHKERRQ(ierr);
@@ -368,9 +371,9 @@ PetscErrorCode FormIFunction(TS ts, PetscReal t, Vec U, Vec Udot, Vec F, void* c
                     double E_p = -(phi_1 - phi_s) / dx;
                     double E_d = (V_applied - phi_s) / d_diel;
                     
-                    // Gauss: eps_d * E_d - eps_0 * E_p = sigma
+                    // Gauss: eps0 * E_p - eps_d * E_d = sigma
                     double sigma = u[j][i][SIGMA];
-                    f[j][i][PHI] = eps_d * E_d - eps0 * E_p - sigma;
+                    f[j][i][PHI] = eps0 * E_p - eps_d * E_d - sigma;
                 } else {
                     f[j][i][PHI] = u[j][i][PHI] - V_applied;
                 }

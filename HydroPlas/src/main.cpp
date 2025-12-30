@@ -18,6 +18,11 @@ int main(int argc, char **argv) {
 
         // Load Configuration
         std::string config_file = "config/default_config.json";
+        if (argc > 1) {
+            config_file = argv[1];
+        }
+        std::cout << "Loading configuration from: " << config_file << std::endl;
+        
         HydroPlas::ConfigParser parser(config_file);
         HydroPlas::SimulationConfig config = parser.get_config();
 
@@ -25,7 +30,9 @@ int main(int argc, char **argv) {
         std::cout << "Domain: " << config.domain.Nx << " x " << config.domain.Ny << std::endl;
 
         if (config.chemistry.mode == "Inline BOLSIG+") {
-            HydroPlas::BolsigInterface::run_bolsig(config.chemistry, "bolsig_output.dat");
+            std::string generated_table = "bolsig_output.dat";
+            HydroPlas::BolsigInterface::run_bolsig(config.chemistry, generated_table);
+            config.chemistry.transport_table_file = generated_table;
         }
 
         // Create Mesh
