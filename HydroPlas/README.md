@@ -19,6 +19,10 @@ HydroPlas is a high-fidelity 1D/2D hydrodynamic plasma simulation code implement
   - Metastable pooling (memory effects in pulsed discharges)
 - **Multi-Component System**: Simultaneous solution of electrons, ions, excited neutrals, electric potential, and surface charge
 - **Wall Interactions**: Robin-type boundary conditions with surface quenching and secondary electron emission from excited species
+- **⚡ Multi-Electrode Voltage Control**: Independent voltage waveforms for each electrode
+  - DC, RF, AC, and pulsed voltage types
+  - Per-electrode phase control and dielectric properties
+  - Ideal for modeling complex discharge configurations (dual-frequency, push-pull, etc.)
 
 ### Numerics
 
@@ -96,6 +100,25 @@ make -j4
 
 # Penning mixture (Ne/Ar)
 ./HydroPlas config/penning_mixture.json
+```
+
+### Multi-Electrode Examples
+
+```bash
+# RF-Ground capacitive discharge
+./HydroPlas config/multi_electrode_rf_ground.json
+
+# Dual-frequency discharge (ion vs electron control)
+./HydroPlas config/multi_electrode_dual_freq.json
+
+# Push-pull RF (180° phase shift)
+./HydroPlas config/multi_electrode_rf_rf_phase.json
+
+# Pulsed discharge with DC bias
+./HydroPlas config/multi_electrode_pulse_dc.json
+
+# DBD with different dielectrics
+./HydroPlas config/multi_electrode_dbd_dual_dielectric.json
 ```
 
 ### With PETSc Monitoring
@@ -207,6 +230,8 @@ HydroPlas/
 
 - **[Theory Manual](docs/THEORY.md)**: Mathematical derivations, ADR equations, Scharfetter-Gummel scheme, reaction mechanisms
 - **[User Guide](docs/USER_GUIDE.md)**: Configuration files, running simulations, troubleshooting, visualization
+- **[Multi-Electrode Guide](docs/MULTI_ELECTRODE_GUIDE.md)**: ⚡ NEW: Custom voltage boundary conditions for each electrode
+- **[Multi-Electrode Implementation](MULTI_ELECTRODE_IMPLEMENTATION.md)**: Technical details and migration guide
 - **[Configuration Examples](config/)**: Annotated JSON files for various discharge types
 
 ---

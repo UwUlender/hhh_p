@@ -19,7 +19,22 @@ struct TimeConfig {
     int output_interval;
 };
 
+struct ElectrodeConfig {
+    std::string name;              // Electrode identifier (e.g., "left", "right", "top", "bottom")
+    std::string voltage_type;      // "DC", "RF", "AC", "PULSE"
+    double voltage_amplitude;      // V_amplitude (Volts)
+    double frequency;              // For RF/AC (Hz)
+    double bias;                   // DC bias voltage (Volts)
+    double phase;                  // Phase offset (radians)
+    double duty_cycle;             // For PULSE type (0-1)
+    double gamma_see;              // Secondary Electron Emission coefficient
+    bool is_dielectric;            // Whether this electrode has a dielectric layer
+    double dielectric_permittivity; // Relative permittivity (ε_r)
+    double dielectric_thickness;    // Thickness in meters
+};
+
 struct BoundaryConfig {
+    // Legacy single-electrode support (for backward compatibility)
     std::string voltage_type; // "DC", "RF"
     double voltage_amplitude; // V_rf or V_dc
     double frequency;         // For RF
@@ -27,6 +42,10 @@ struct BoundaryConfig {
     double gamma_see;         // Secondary Electron Emission coefficient
     double dielectric_permittivity;
     double dielectric_thickness;
+    
+    // New multi-electrode support
+    std::vector<ElectrodeConfig> electrodes;
+    bool use_multi_electrode; // Flag to use new electrode system
 };
 
 struct ExcitedSpeciesConfig {

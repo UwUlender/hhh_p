@@ -204,6 +204,22 @@ PetscErrorCode FormIFunction(TS ts, PetscReal t, Vec U, Vec Udot, Vec F, void* c
     const double eps = eps0; 
     
     // Boundary parameters
+    // Left boundary (electrode index 0)
+    bool is_dielectric_left = app->boundary->is_electrode_dielectric_by_index(0);
+    double eps_d_left = is_dielectric_left ? app->boundary->get_electrode_dielectric_permittivity("left") * eps0 : eps0;
+    double d_diel_left = is_dielectric_left ? app->boundary->get_electrode_dielectric_thickness("left") : 0.0;
+    double V_applied_left = app->boundary->get_electrode_voltage_by_index(0, t);
+    double gamma_see_left = app->boundary->get_electrode_gamma_see_by_index(0);
+    
+    // Right boundary (electrode index 1, if exists)
+    bool has_right_electrode = (app->boundary->get_num_electrodes() > 1);
+    bool is_dielectric_right = has_right_electrode ? app->boundary->is_electrode_dielectric_by_index(1) : false;
+    double eps_d_right = is_dielectric_right ? app->boundary->get_electrode_dielectric_permittivity("right") * eps0 : eps0;
+    double d_diel_right = is_dielectric_right ? app->boundary->get_electrode_dielectric_thickness("right") : 0.0;
+    double V_applied_right = has_right_electrode ? app->boundary->get_electrode_voltage_by_index(1, t) : 0.0;
+    double gamma_see_right = has_right_electrode ? app->boundary->get_electrode_gamma_see_by_index(1) : 0.1;
+    
+    // Legacy fallback (for backward compatibility)
     bool is_dielectric = (app->config.boundary.dielectric_permittivity > 1.5);
     double eps_d = app->config.boundary.dielectric_permittivity * eps0;
     double d_diel = app->config.boundary.dielectric_thickness;
@@ -313,18 +329,50 @@ PetscErrorCode FormIFunction(TS ts, PetscReal t, Vec U, Vec Udot, Vec F, void* c
 
             } else {
                  // Right Boundary (Wall)
-                 double E_wall = u[j][i][app->idx_phi] / (0.5*dx);
+                 double Phi_wall_right = (app->config.boundary.use_multi_electrode && has_right_electrode) ? V_applied_right : 0.0;
+                 double dphi_wall_right = u[j][i][app->idx_phi] - Phi_wall_right;
+                 double E_wall = dphi_wall_right / (0.5*dx);
                  
                  double flux_i_out = mu_i * u[j][i][app->idx_ni] * E_wall; 
                  if (flux_i_out < 0) flux_i_out = 0;
                  
+                 // Include secondary electron emission from ions at right boundary
+                 double gamma_see_for_right = (app->config.boundary.use_multi_electrode && has_right_electrode) ? gamma_see_right : 0.0;
+                 double flux_e_see_right = gamma_see_for_right * flux_i_out;
+                 
                  double v_th_e = sqrt(8.0 * mean_energy * 1.6e-19 / (3.14 * 9.11e-31)); 
                  double flux_e_out = 0.25 * u[j][i][app->idx_ne] * v_th_e;
-                 if (-mu_e * E_wall > 0) flux_e_out += -mu_e * u[j][i][app->idx_ne] * E_wall; 
+                 if (-mu_e * E_wall > 0) flux_e_out += -mu_e * u[j][i][app->idx_ne] * E_wall;
                  
-                 flux_e_net += flux_e_out;
+                 // Include SEE from excited species at right boundary if using multi-electrode
+                 if (app->config.boundary.use_multi_electrode && has_right_electrode) {
+                     for(int k=0; k<app->num_excited; ++k) {
+                         double gamma_see_k = app->config.chemistry.excited_species[k].wall_see_prob;
+                         if (gamma_see_k > 0) {
+                            double gamma_k = app->config.chemistry.excited_species[k].wall_quenching_prob;
+                            double m_k = app->config.chemistry.excited_species[k].mass;
+                            double v_th_k = sqrt(8.0 * 1.38e-23 * T_gas / (3.14 * m_k));
+                            PetscInt idx = app->idx_excited_start + k;
+                            double n_val = u[j][i][idx];
+                            double flux_n_in = (gamma_k * v_th_k / 4.0) * n_val;
+                            if(u_gas > 0) flux_n_in += u_gas * n_val;
+                            
+                            flux_e_see_right += gamma_see_k * flux_n_in;
+                         }
+                     }
+                 }
+                 
+                 flux_e_net += flux_e_out - flux_e_see_right; // SEE creates electrons going into plasma
                  flux_i_net += flux_i_out;
-                 flux_eps_net += flux_e_out * mean_energy;
+                 flux_eps_net += flux_e_out * mean_energy - flux_e_see_right * mean_energy;
+                 
+                 // Handle dielectric at right boundary if needed
+                 if (app->config.boundary.use_multi_electrode && has_right_electrode && is_dielectric_right) {
+                     double J_wall_right = -q * (flux_i_out - (flux_e_out - flux_e_see_right));
+                     f[j][i][app->idx_sigma] = udot[j][i][app->idx_sigma] - J_wall_right;
+                 } else if (i == M-1) {
+                     f[j][i][app->idx_sigma] = u[j][i][app->idx_sigma];
+                 }
                  
                  for(int k=0; k<app->num_excited; ++k) {
                      double gamma_k = app->config.chemistry.excited_species[k].wall_quenching_prob;
@@ -367,7 +415,7 @@ PetscErrorCode FormIFunction(TS ts, PetscReal t, Vec U, Vec Udot, Vec F, void* c
 
             } else {
                  // Left Boundary (i=0)
-                 double Phi_wall = V_applied;
+                 double Phi_wall = app->config.boundary.use_multi_electrode ? V_applied_left : V_applied;
                  double dphi_wall = u[j][i][app->idx_phi] - Phi_wall;
                  double E_wall_l = -dphi_wall / (0.5*dx); 
                  
@@ -376,7 +424,8 @@ PetscErrorCode FormIFunction(TS ts, PetscReal t, Vec U, Vec Udot, Vec F, void* c
                      flux_i_boundary = mu_i * u[j][i][app->idx_ni] * E_wall_l; 
                  }
                  
-                 double flux_e_boundary = -gamma_see_total * flux_i_boundary;
+                 double gamma_see_for_boundary = app->config.boundary.use_multi_electrode ? gamma_see_left : gamma_see_total;
+                 double flux_e_boundary = -gamma_see_for_boundary * flux_i_boundary;
                  
                  for(int k=0; k<app->num_excited; ++k) {
                      double gamma_see_k = app->config.chemistry.excited_species[k].wall_see_prob;
@@ -403,7 +452,8 @@ PetscErrorCode FormIFunction(TS ts, PetscReal t, Vec U, Vec Udot, Vec F, void* c
                  flux_eps_net -= flux_e_boundary * mean_energy; 
                  
                  double J_wall = -q * (flux_i_boundary - flux_e_boundary);
-                 if (is_dielectric) {
+                 bool left_is_dielectric = app->config.boundary.use_multi_electrode ? is_dielectric_left : is_dielectric;
+                 if (left_is_dielectric) {
                      f[j][i][app->idx_sigma] = udot[j][i][app->idx_sigma] - J_wall;
                  } else {
                      f[j][i][app->idx_sigma] = u[j][i][app->idx_sigma];
@@ -432,18 +482,39 @@ PetscErrorCode FormIFunction(TS ts, PetscReal t, Vec U, Vec Udot, Vec F, void* c
 
             // --- Poisson ---
             if (i == 0) {
-                if (is_dielectric) {
+                // Left boundary
+                bool left_is_dielectric = app->config.boundary.use_multi_electrode ? is_dielectric_left : is_dielectric;
+                double V_left = app->config.boundary.use_multi_electrode ? V_applied_left : V_applied;
+                
+                if (left_is_dielectric) {
                     double phi_s = u[j][i][app->idx_phi];
                     double phi_1 = u[j][i+1][app->idx_phi];
                     double E_p = -(phi_1 - phi_s) / dx;
-                    double E_d = (V_applied - phi_s) / d_diel;
+                    double d_diel_use = app->config.boundary.use_multi_electrode ? d_diel_left : d_diel;
+                    double eps_d_use = app->config.boundary.use_multi_electrode ? eps_d_left : eps_d;
+                    double E_d = (V_left - phi_s) / d_diel_use;
                     double sigma = u[j][i][app->idx_sigma];
-                    f[j][i][app->idx_phi] = eps0 * E_p - eps_d * E_d - sigma;
+                    f[j][i][app->idx_phi] = eps0 * E_p - eps_d_use * E_d - sigma;
                 } else {
-                    f[j][i][app->idx_phi] = u[j][i][app->idx_phi] - V_applied;
+                    f[j][i][app->idx_phi] = u[j][i][app->idx_phi] - V_left;
                 }
             } else if (i == M-1) {
-                f[j][i][app->idx_phi] = u[j][i][app->idx_phi]; 
+                // Right boundary
+                if (app->config.boundary.use_multi_electrode && has_right_electrode) {
+                    if (is_dielectric_right) {
+                        double phi_s = u[j][i][app->idx_phi];
+                        double phi_m1 = u[j][i-1][app->idx_phi];
+                        double E_p = (phi_s - phi_m1) / dx;
+                        double E_d = (phi_s - V_applied_right) / d_diel_right;
+                        double sigma = u[j][i][app->idx_sigma];
+                        f[j][i][app->idx_phi] = eps0 * E_p - eps_d_right * E_d - sigma;
+                    } else {
+                        f[j][i][app->idx_phi] = u[j][i][app->idx_phi] - V_applied_right;
+                    }
+                } else {
+                    // Legacy: ground the right boundary
+                    f[j][i][app->idx_phi] = u[j][i][app->idx_phi];
+                }
             } else {
                 double rho = q * (u[j][i][app->idx_ni] - u[j][i][app->idx_ne]);
                 double d2phi_dx2 = (u[j][i+1][app->idx_phi] - 2*u[j][i][app->idx_phi] + u[j][i-1][app->idx_phi]) / (dx*dx);
