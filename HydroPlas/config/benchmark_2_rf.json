@@ -1,21 +1,21 @@
 {
     "domain": {
-        "Lx": 0.01,
+        "Lx": 0.02,
         "Ly": 0.0,
-        "Nx": 200,
+        "Nx": 256,
         "Ny": 1
     },
     "time": {
-        "dt": 1e-11,
-        "t_end": 1e-5,
-        "output_interval": 100
+        "dt": 1e-12,
+        "t_end": 5e-6,
+        "output_interval": 200
     },
     "boundary": {
-        "voltage_type": "DC",
-        "voltage_amplitude": 300.0,
-        "frequency": 0.0,
+        "voltage_type": "RF",
+        "voltage_amplitude": 200.0,
+        "frequency": 13.56e6,
         "bias": 0.0,
-        "gamma_see": 0.1,
+        "gamma_see": 0.05,
         "dielectric_permittivity": 1.0,
         "dielectric_thickness": 0.0
     },
