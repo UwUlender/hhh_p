@@ -26,6 +26,7 @@ struct BoundaryConfig {
     double bias;              // V_bias
     double gamma_see;         // Secondary Electron Emission coefficient
     double dielectric_permittivity;
+    double dielectric_thickness;
 };
 
 struct ChemistryConfig {
