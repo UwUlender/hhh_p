@@ -97,9 +97,26 @@ PetscErrorCode Solver::init() {
 
     ierr = MatDestroy(&J); CHKERRQ(ierr); 
     
-    ierr = TSSetTimeStep(ts_, config_.time.dt); CHKERRQ(ierr);
+    // Automatic time step control for RF discharges
+    double dt_initial = config_.time.dt;
+    if (config_.boundary.voltage_type == "RF" && config_.boundary.frequency > 0.0) {
+        double T_rf = 1.0 / config_.boundary.frequency;  // RF period [s]
+        double dt_rf = T_rf / 100.0;  // Resolve RF cycle with ~100 points
+        if (dt_initial > dt_rf) {
+            std::cout << "WARNING: Initial dt = " << dt_initial 
+                     << " s is too large for RF frequency " << config_.boundary.frequency 
+                     << " Hz (period = " << T_rf << " s)" << std::endl;
+            std::cout << "Automatically reducing dt to " << dt_rf << " s (T/100)" << std::endl;
+            dt_initial = dt_rf;
+        }
+    }
+    
+    ierr = TSSetTimeStep(ts_, dt_initial); CHKERRQ(ierr);
     ierr = TSSetMaxTime(ts_, config_.time.t_end); CHKERRQ(ierr);
     ierr = TSSetExactFinalTime(ts_, TS_EXACTFINALTIME_MATCHSTEP); CHKERRQ(ierr);
+    
+    // Enable adaptive timestepping (optional, can be overridden by command line)
+    ierr = TSSetMaxSteps(ts_, 1000000); CHKERRQ(ierr);  // Prevent infinite loops
     
     // 4. Setup PCFIELDSPLIT
     std::string split0_fields = "0,1,2,4";
