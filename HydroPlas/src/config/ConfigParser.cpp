@@ -63,6 +63,35 @@ void ConfigParser::parse_file(const std::string& path) {
         config_.chemistry.mode = c.value("mode", "Pre-calculated");
         config_.chemistry.cross_section_file = c.value("cross_section_file", "data/cs.dat");
         config_.chemistry.transport_table_file = c.value("transport_table_file", "data/transport.dat");
+        config_.chemistry.gas_velocity = c.value("gas_velocity", 0.0);
+        config_.chemistry.gas_temperature = c.value("gas_temperature", 300.0);
+
+        if (c.contains("excited_species") && c["excited_species"].is_array()) {
+            for (const auto& es : c["excited_species"]) {
+                ExcitedSpeciesConfig esc;
+                esc.name = es.value("name", "Unknown");
+                esc.diffusion_coeff = es.value("diffusion_coeff", 1.5e-4);
+                esc.mass = es.value("mass", 6.63e-26);
+                esc.energy_level = es.value("energy_level", 11.5);
+                esc.wall_quenching_prob = es.value("wall_quenching_prob", 1.0);
+                esc.wall_see_prob = es.value("wall_see_prob", 0.0);
+                config_.chemistry.excited_species.push_back(esc);
+            }
+        }
+
+        if (c.contains("reactions") && c["reactions"].is_array()) {
+            for (const auto& r : c["reactions"]) {
+                ReactionConfig rc;
+                rc.type = r.value("type", "unknown");
+                rc.species = r.value("species", "");
+                rc.rate_source = r.value("rate_source", "constant");
+                rc.table_col = r.value("table_col", "");
+                rc.rate_constant = r.value("rate_constant", 0.0);
+                if (r.contains("reactants")) rc.reactants = r["reactants"].get<std::vector<std::string>>();
+                if (r.contains("products")) rc.products = r["products"].get<std::vector<std::string>>();
+                config_.chemistry.reactions.push_back(rc);
+            }
+        }
     }
 }
 

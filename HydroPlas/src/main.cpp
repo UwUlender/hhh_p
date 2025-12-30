@@ -35,10 +35,18 @@ int main(int argc, char **argv) {
             config.chemistry.transport_table_file = generated_table;
         }
 
+        // Calculate total DOFs
+        // 0: ne, 1: ni, 2: neps, 3: phi, 4: sigma
+        // 5..: excited species
+        int base_dofs = 5;
+        int excited_dofs = config.chemistry.excited_species.size();
+        int total_dofs = base_dofs + excited_dofs;
+        std::cout << "Total DOFs: " << total_dofs << " (" << excited_dofs << " excited species)" << std::endl;
+
         // Create Mesh
         HydroPlas::MeshGenerator meshGen(config.domain);
         DM dm;
-        ierr = meshGen.create_dm(&dm); CHKERRQ(ierr);
+        ierr = meshGen.create_dm(&dm, total_dofs); CHKERRQ(ierr);
 
         std::cout << "Mesh generated." << std::endl;
 

@@ -5,6 +5,8 @@
 #include "../config/ConfigParser.hpp"
 #include "../chemistry/LookupTable.hpp"
 #include "../boundary/BoundaryManager.hpp"
+#include <vector>
+#include <map>
 
 namespace HydroPlas {
 
@@ -13,6 +15,12 @@ struct AppCtx {
     SimulationConfig config;
     LookupTable lookup;
     BoundaryManager* boundary;
+    
+    // Mappings
+    std::map<std::string, int> species_map; // Name -> DOF Index
+    int num_excited;
+    int idx_ne, idx_ni, idx_neps, idx_phi, idx_sigma;
+    int idx_excited_start;
 };
 
 class Solver {
@@ -23,7 +31,7 @@ public:
     PetscErrorCode init();
     PetscErrorCode solve();
 
-    // Accessor for AppCtx if needed by callbacks (they get it via void*)
+    // Accessor for AppCtx if needed by callbacks
     AppCtx& get_ctx() { return ctx_; }
 
 private:
