@@ -48,13 +48,38 @@ void ConfigParser::parse_file(const std::string& path) {
     // Boundary
     if (j.contains("boundary")) {
         auto& b = j["boundary"];
-        config_.boundary.voltage_type = b.value("voltage_type", "DC");
-        config_.boundary.voltage_amplitude = b.value("voltage_amplitude", 300.0);
-        config_.boundary.frequency = b.value("frequency", 13.56e6);
-        config_.boundary.bias = b.value("bias", 0.0);
-        config_.boundary.gamma_see = b.value("gamma_see", 0.1);
-        config_.boundary.dielectric_permittivity = b.value("dielectric_permittivity", 1.0);
-        config_.boundary.dielectric_thickness = b.value("dielectric_thickness", 1e-3);
+        
+        // Check if using new multi-electrode format
+        if (b.contains("electrodes") && b["electrodes"].is_array()) {
+            config_.boundary.use_multi_electrode = true;
+            
+            for (const auto& elec : b["electrodes"]) {
+                ElectrodeConfig ec;
+                ec.name = elec.value("name", "unnamed");
+                ec.voltage_type = elec.value("voltage_type", "DC");
+                ec.voltage_amplitude = elec.value("voltage_amplitude", 0.0);
+                ec.frequency = elec.value("frequency", 13.56e6);
+                ec.bias = elec.value("bias", 0.0);
+                ec.phase = elec.value("phase", 0.0);
+                ec.duty_cycle = elec.value("duty_cycle", 0.5);
+                ec.gamma_see = elec.value("gamma_see", 0.1);
+                ec.is_dielectric = elec.value("is_dielectric", false);
+                ec.dielectric_permittivity = elec.value("dielectric_permittivity", 1.0);
+                ec.dielectric_thickness = elec.value("dielectric_thickness", 0.0);
+                
+                config_.boundary.electrodes.push_back(ec);
+            }
+        } else {
+            // Legacy single-electrode format
+            config_.boundary.use_multi_electrode = false;
+            config_.boundary.voltage_type = b.value("voltage_type", "DC");
+            config_.boundary.voltage_amplitude = b.value("voltage_amplitude", 300.0);
+            config_.boundary.frequency = b.value("frequency", 13.56e6);
+            config_.boundary.bias = b.value("bias", 0.0);
+            config_.boundary.gamma_see = b.value("gamma_see", 0.1);
+            config_.boundary.dielectric_permittivity = b.value("dielectric_permittivity", 1.0);
+            config_.boundary.dielectric_thickness = b.value("dielectric_thickness", 1e-3);
+        }
     }
 
     // Chemistry

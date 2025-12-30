@@ -1,0 +1,53 @@
+{
+    "description": "Dual RF electrodes with 180-degree phase shift (push-pull configuration)",
+    "domain": {
+        "Lx": 0.03,
+        "Ly": 0.0,
+        "Nx": 300,
+        "Ny": 1
+    },
+    "time": {
+        "dt": 5e-13,
+        "t_end": 1e-5,
+        "output_interval": 500
+    },
+    "boundary": {
+        "electrodes": [
+            {
+                "name": "left",
+                "voltage_type": "RF",
+                "voltage_amplitude": 300.0,
+                "frequency": 13.56e6,
+                "bias": 0.0,
+                "phase": 0.0,
+                "duty_cycle": 0.5,
+                "gamma_see": 0.1,
+                "is_dielectric": false,
+                "dielectric_permittivity": 1.0,
+                "dielectric_thickness": 0.0
+            },
+            {
+                "name": "right",
+                "voltage_type": "RF",
+                "voltage_amplitude": 300.0,
+                "frequency": 13.56e6,
+                "bias": 0.0,
+                "phase": 3.14159265359,
+                "duty_cycle": 0.5,
+                "gamma_see": 0.1,
+                "is_dielectric": false,
+                "dielectric_permittivity": 1.0,
+                "dielectric_thickness": 0.0
+            }
+        ]
+    },
+    "chemistry": {
+        "mode": "Pre-calculated",
+        "cross_section_file": "data/argon_cs.txt",
+        "transport_table_file": "data/argon_transport.txt",
+        "gas_velocity": 0.0,
+        "gas_temperature": 300.0,
+        "excited_species": [],
+        "reactions": []
+    }
+}
