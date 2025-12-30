@@ -1,0 +1,26 @@
+{
+    "domain": {
+        "Lx": 0.05,
+        "Ly": 0.0,
+        "Nx": 200,
+        "Ny": 1
+    },
+    "time": {
+        "dt": 1e-11,
+        "t_end": 1e-5,
+        "output_interval": 500
+    },
+    "boundary": {
+        "voltage_type": "DC",
+        "voltage_amplitude": 50.0,
+        "frequency": 0.0,
+        "bias": 0.0,
+        "gamma_see": 0.05,
+        "dielectric_permittivity": 4.0
+    },
+    "chemistry": {
+        "mode": "Pre-calculated",
+        "cross_section_file": "data/argon_cs.txt",
+        "transport_table_file": "data/argon_transport.txt"
+    }
+}
