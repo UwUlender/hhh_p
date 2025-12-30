@@ -10,6 +10,8 @@ Solver::Solver(DM dm, const SimulationConfig& config) : dm_(dm), config_(config)
     ctx_.dm = dm;
     ctx_.config = config;
     ctx_.boundary = new BoundaryManager(config.boundary);
+    ctx_.reactions = nullptr; // Initialized after lookup table is loaded
+    ctx_.output = nullptr;    // Initialized in init()
     
     // Initialize Mappings
     ctx_.idx_ne = 0;
@@ -27,6 +29,8 @@ Solver::Solver(DM dm, const SimulationConfig& config) : dm_(dm), config_(config)
 
 Solver::~Solver() {
     if (ctx_.boundary) delete ctx_.boundary;
+    if (ctx_.reactions) delete ctx_.reactions;
+    if (ctx_.output) delete ctx_.output;
     if (ts_) TSDestroy(&ts_);
 }
 
@@ -54,6 +58,17 @@ PetscErrorCode Solver::init() {
             return -1;
         }
     }
+    
+    // Initialize ReactionHandler
+    ctx_.reactions = new ReactionHandler(config_.chemistry, &ctx_.lookup);
+    
+    // Initialize OutputManager
+    ctx_.output = new OutputManager(config_, dm_, ctx_.num_excited);
+    std::vector<std::string> field_names = {"ne", "ni", "neps", "phi", "sigma"};
+    for(int k=0; k<ctx_.num_excited; ++k) {
+        field_names.push_back(config_.chemistry.excited_species[k].name);
+    }
+    ctx_.output->set_field_names(field_names);
 
     // 2. Setup DM fields
     ierr = DMDASetFieldName(dm_, ctx_.idx_ne, "ne"); CHKERRQ(ierr);
@@ -82,9 +97,26 @@ PetscErrorCode Solver::init() {
 
     ierr = MatDestroy(&J); CHKERRQ(ierr); 
     
-    ierr = TSSetTimeStep(ts_, config_.time.dt); CHKERRQ(ierr);
+    // Automatic time step control for RF discharges
+    double dt_initial = config_.time.dt;
+    if (config_.boundary.voltage_type == "RF" && config_.boundary.frequency > 0.0) {
+        double T_rf = 1.0 / config_.boundary.frequency;  // RF period [s]
+        double dt_rf = T_rf / 100.0;  // Resolve RF cycle with ~100 points
+        if (dt_initial > dt_rf) {
+            std::cout << "WARNING: Initial dt = " << dt_initial 
+                     << " s is too large for RF frequency " << config_.boundary.frequency 
+                     << " Hz (period = " << T_rf << " s)" << std::endl;
+            std::cout << "Automatically reducing dt to " << dt_rf << " s (T/100)" << std::endl;
+            dt_initial = dt_rf;
+        }
+    }
+    
+    ierr = TSSetTimeStep(ts_, dt_initial); CHKERRQ(ierr);
     ierr = TSSetMaxTime(ts_, config_.time.t_end); CHKERRQ(ierr);
     ierr = TSSetExactFinalTime(ts_, TS_EXACTFINALTIME_MATCHSTEP); CHKERRQ(ierr);
+    
+    // Enable adaptive timestepping (optional, can be overridden by command line)
+    ierr = TSSetMaxSteps(ts_, 1000000); CHKERRQ(ierr);  // Prevent infinite loops
     
     // 4. Setup PCFIELDSPLIT
     std::string split0_fields = "0,1,2,4";
@@ -102,6 +134,9 @@ PetscErrorCode Solver::init() {
     PetscOptionsSetValue(NULL, "-fieldsplit_0_pc_type", "ilu");
     PetscOptionsSetValue(NULL, "-fieldsplit_1_ksp_type", "preonly");
     PetscOptionsSetValue(NULL, "-fieldsplit_1_pc_type", "lu"); 
+
+    // Setup output monitoring
+    ierr = TSMonitorSet(ts_, MonitorOutput, &ctx_, NULL); CHKERRQ(ierr);
 
     ierr = TSSetFromOptions(ts_); CHKERRQ(ierr);
     
@@ -210,19 +245,33 @@ PetscErrorCode FormIFunction(TS ts, PetscReal t, Vec U, Vec Udot, Vec F, void* c
             double D_i = 0.026;
             try { mu_i = app->lookup.interpolate(mean_energy, "Mobility_i"); D_i = app->lookup.interpolate(mean_energy, "Diff_i"); } catch(...){}
 
-            // --- Source Terms ---
-            double S_ion = 0.0;
-            double EnergyLoss = 0.0;
-            
-            double R_ion = 0.0;
-            try { R_ion = app->lookup.interpolate(mean_energy, "Rate_Ionization"); } catch(...) {}
+            // --- Source Terms (Chemistry) ---
             double N_gas = 3.22e22; // ~1 atm
-            S_ion += R_ion * N_gas * ne_val;
-            EnergyLoss += S_ion * 15.76;
+            
+            // Collect excited species densities
+            std::vector<double> n_excited_vals(app->num_excited);
+            for(int k=0; k<app->num_excited; ++k) {
+                n_excited_vals[k] = u[j][i][app->idx_excited_start + k];
+            }
+            
+            // Compute all reaction sources using ReactionHandler
+            double S_ne = 0.0, S_ni = 0.0, S_neps = 0.0;
+            std::vector<double> S_excited(app->num_excited, 0.0);
+            
+            if(app->reactions) {
+                app->reactions->compute_sources(ne_val, u[j][i][app->idx_ni], n_excited_vals,
+                                               mean_energy, N_gas,
+                                               S_ne, S_ni, S_neps, S_excited);
+            }
 
-            f[j][i][app->idx_ne] -= S_ion; 
-            f[j][i][app->idx_ni] -= S_ion; 
-            f[j][i][app->idx_neps] += EnergyLoss;
+            // Apply source terms to residuals
+            f[j][i][app->idx_ne] -= S_ne; 
+            f[j][i][app->idx_ni] -= S_ni; 
+            f[j][i][app->idx_neps] -= S_neps;
+            
+            for(int k=0; k<app->num_excited; ++k) {
+                f[j][i][app->idx_excited_start + k] -= S_excited[k];
+            }
 
             // --- Fluxes ---
             double flux_e_net = 0.0;
@@ -419,6 +468,21 @@ PetscErrorCode FormIJacobian(TS ts, PetscReal t, Vec U, Vec Udot, PetscReal shif
         ierr = MatAssemblyBegin(J, MAT_FINAL_ASSEMBLY); CHKERRQ(ierr);
         ierr = MatAssemblyEnd(J, MAT_FINAL_ASSEMBLY); CHKERRQ(ierr);
     }
+    return 0;
+}
+
+PetscErrorCode MonitorOutput(TS ts, PetscInt step, PetscReal time, Vec U, void* ctx) {
+    AppCtx* app = (AppCtx*)ctx;
+    PetscErrorCode ierr;
+    
+    // Write output at specified intervals
+    if (step % app->config.time.output_interval == 0) {
+        if (app->output) {
+            ierr = app->output->write_output(U, time, step); CHKERRQ(ierr);
+        }
+        PetscPrintf(PETSC_COMM_WORLD, "Step %d, Time %.3e s\n", step, time);
+    }
+    
     return 0;
 }
 

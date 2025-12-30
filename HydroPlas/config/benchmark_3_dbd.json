@@ -22,6 +22,10 @@
     "chemistry": {
         "mode": "Pre-calculated",
         "cross_section_file": "data/argon_cs.txt",
-        "transport_table_file": "data/argon_transport.txt"
+        "transport_table_file": "data/argon_transport.txt",
+        "gas_velocity": 0.0,
+        "gas_temperature": 300.0,
+        "excited_species": [],
+        "reactions": []
     }
 }

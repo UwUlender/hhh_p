@@ -1,0 +1,39 @@
+{
+    "domain": {
+        "Lx": 0.002,
+        "Nx": 150
+    },
+    "time": {
+        "dt": 1e-12,
+        "t_end": 5e-9,
+        "output_interval": 100
+    },
+    "boundary": {
+        "voltage_type": "RF",
+        "voltage_amplitude": 1000.0,
+        "frequency": 13.56e6,
+        "bias": 0.0,
+        "gamma_see": 0.05,
+        "dielectric_permittivity": 7.5,
+        "dielectric_thickness": 2e-3,
+        "comment": "Atmospheric pressure DBD with alumina dielectric"
+    },
+    "chemistry": {
+        "mode": "Pre-calculated",
+        "transport_table_file": "data/transport.dat",
+        "gas_velocity": 0.0,
+        "gas_temperature": 350.0,
+        "excited_species": [
+            {
+                "name": "Ar_m",
+                "diffusion_coeff": 1.5e-4,
+                "mass": 6.63e-26,
+                "energy_level": 11.55,
+                "wall_quenching_prob": 0.01,
+                "wall_see_prob": 0.05,
+                "comment": "Memory effect: Ar* accumulates at dielectric, enables lower breakdown"
+            }
+        ],
+        "reactions": []
+    }
+}
