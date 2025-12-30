@@ -11,7 +11,7 @@ public:
     explicit MeshGenerator(const DomainConfig& config);
     ~MeshGenerator();
 
-    PetscErrorCode create_dm(DM* dm);
+    PetscErrorCode create_dm(DM* dm, int num_dofs);
 
 private:
     DomainConfig config_;

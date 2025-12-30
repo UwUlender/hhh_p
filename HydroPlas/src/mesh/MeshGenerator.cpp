@@ -7,7 +7,7 @@ MeshGenerator::MeshGenerator(const DomainConfig& config) : config_(config) {}
 
 MeshGenerator::~MeshGenerator() {}
 
-PetscErrorCode MeshGenerator::create_dm(DM* dm) {
+PetscErrorCode MeshGenerator::create_dm(DM* dm, int num_dofs) {
     PetscErrorCode ierr;
 
     // Always use 2D DMDA. For 1D, Ny=1.
@@ -16,7 +16,7 @@ PetscErrorCode MeshGenerator::create_dm(DM* dm) {
 
     ierr = DMDACreate2d(PETSC_COMM_WORLD, DM_BOUNDARY_NONE, DM_BOUNDARY_NONE, DMDA_STENCIL_STAR,
                         config_.Nx, Ny, PETSC_DECIDE, PETSC_DECIDE,
-                        5, 1, NULL, NULL, dm); CHKERRQ(ierr);
+                        num_dofs, 1, NULL, NULL, dm); CHKERRQ(ierr);
 
 
     ierr = DMSetFromOptions(*dm); CHKERRQ(ierr);
