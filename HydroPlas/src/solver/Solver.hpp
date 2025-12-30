@@ -4,7 +4,9 @@
 #include <petscts.h>
 #include "../config/ConfigParser.hpp"
 #include "../chemistry/LookupTable.hpp"
+#include "../chemistry/ReactionHandler.hpp"
 #include "../boundary/BoundaryManager.hpp"
+#include "../io/OutputManager.hpp"
 #include <vector>
 #include <map>
 
@@ -15,6 +17,8 @@ struct AppCtx {
     SimulationConfig config;
     LookupTable lookup;
     BoundaryManager* boundary;
+    ReactionHandler* reactions;
+    OutputManager* output;
     
     // Mappings
     std::map<std::string, int> species_map; // Name -> DOF Index
@@ -44,5 +48,6 @@ private:
 // PETSc callbacks
 PetscErrorCode FormIFunction(TS ts, PetscReal t, Vec U, Vec Udot, Vec F, void* ctx);
 PetscErrorCode FormIJacobian(TS ts, PetscReal t, Vec U, Vec Udot, PetscReal shift, Mat J, Mat P, void* ctx);
+PetscErrorCode MonitorOutput(TS ts, PetscInt step, PetscReal time, Vec U, void* ctx);
 
 } // namespace HydroPlas

@@ -1,0 +1,50 @@
+{
+    "domain": {
+        "Lx": 0.005,
+        "Nx": 100
+    },
+    "time": {
+        "dt": 1e-11,
+        "t_end": 1e-8,
+        "output_interval": 50
+    },
+    "boundary": {
+        "voltage_type": "DC",
+        "voltage_amplitude": 300.0,
+        "gamma_see": 0.1,
+        "dielectric_permittivity": 1.0
+    },
+    "chemistry": {
+        "mode": "Pre-calculated",
+        "transport_table_file": "data/transport.dat",
+        "gas_velocity": 10.0,
+        "gas_temperature": 300.0,
+        "comment": "Ne/Ar Penning mixture - Demonstrates non-local ionization via excited transport",
+        "excited_species": [
+            {
+                "name": "Ne_m",
+                "diffusion_coeff": 2.0e-4,
+                "mass": 3.35e-26,
+                "energy_level": 16.62,
+                "wall_quenching_prob": 0.0001,
+                "wall_see_prob": 0.02,
+                "comment": "Ne* has energy > E_iz(Ar), enables Penning: Ne* + Ar -> Ne + Ar+ + e"
+            },
+            {
+                "name": "Ar_m",
+                "diffusion_coeff": 1.5e-4,
+                "mass": 6.63e-26,
+                "energy_level": 11.55,
+                "wall_quenching_prob": 0.001,
+                "wall_see_prob": 0.01,
+                "comment": "Ar* also participates in self-Penning"
+            }
+        ],
+        "reactions": [
+            {
+                "type": "penning_ionization",
+                "comment": "Ne* + Ar -> Ne + Ar+ + e (dominant in mixtures)"
+            }
+        ]
+    }
+}
