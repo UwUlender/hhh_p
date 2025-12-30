@@ -16,7 +16,7 @@ PetscErrorCode MeshGenerator::create_dm(DM* dm) {
 
     ierr = DMDACreate2d(PETSC_COMM_WORLD, DM_BOUNDARY_NONE, DM_BOUNDARY_NONE, DMDA_STENCIL_STAR,
                         config_.Nx, Ny, PETSC_DECIDE, PETSC_DECIDE,
-                        4, 1, NULL, NULL, dm); CHKERRQ(ierr);
+                        5, 1, NULL, NULL, dm); CHKERRQ(ierr);
 
 
     ierr = DMSetFromOptions(*dm); CHKERRQ(ierr);

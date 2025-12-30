@@ -54,6 +54,7 @@ void ConfigParser::parse_file(const std::string& path) {
         config_.boundary.bias = b.value("bias", 0.0);
         config_.boundary.gamma_see = b.value("gamma_see", 0.1);
         config_.boundary.dielectric_permittivity = b.value("dielectric_permittivity", 1.0);
+        config_.boundary.dielectric_thickness = b.value("dielectric_thickness", 1e-3);
     }
 
     // Chemistry
