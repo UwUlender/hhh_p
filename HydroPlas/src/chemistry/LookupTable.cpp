@@ -26,6 +26,36 @@ void LookupTable::load(const std::string& filename) {
     }
 }
 
+void LookupTable::load_rate(const std::string& filename) {
+    std::ifstream fin(filename);
+    if (!fin.is_open()) {
+        std::cerr << "Warning: Cannot open rate table file: " << filename << std::endl;
+        return;
+    }
+
+    // Format: Energy | Rate
+    // Skip comment lines starting with # or non-digit
+    std::string line;
+    energy_grid_.clear();
+    rate_data_.clear();
+    
+    while (std::getline(fin, line)) {
+        // Skip empty lines and comments
+        if (line.empty() || line[0] == '#' || !isdigit(line[0])) continue;
+        
+        std::stringstream ss(line);
+        double e, rate;
+        if (ss >> e >> rate) {
+            energy_grid_.push_back(e);
+            rate_data_.push_back(rate);
+        }
+    }
+    
+    if (energy_grid_.empty()) {
+        std::cerr << "Warning: No data loaded from rate table: " << filename << std::endl;
+    }
+}
+
 double LookupTable::interpolate(const std::vector<double>& x, const std::vector<double>& y, double val) const {
     if (x.empty()) return 0.0;
     if (val <= x.front()) return y.front();
@@ -69,10 +99,9 @@ double LookupTable::get_diffusion(double energy) const {
     return interpolate(energy_grid_, diffusion_data_, energy);
 }
 
-double LookupTable::get_rate(double energy, int reaction_index) const {
-    // Placeholder: assumes reaction rates might be in other columns or separate structure
-    // implementation skipped for brevity unless specified
-    return 0.0; 
+double LookupTable::get_rate(double energy) const {
+    if (rate_data_.empty()) return 0.0;
+    return interpolate(energy_grid_, rate_data_, energy);
 }
 
 } // namespace HydroPlas

@@ -1,6 +1,7 @@
 #include "OutputManager.hpp"
 #include <iostream>
 #include <stdexcept>
+#include <mpi.h>
 
 namespace HydroPlas {
 
@@ -142,20 +143,90 @@ void OutputManager::read_state(const std::string& filename, int step, Vec X) {
         throw std::runtime_error("Step not found in restart file");
     }
     
-    // Read logic: Read datasets into buffer, then fill Vec X
-    // Assuming same grid size.
+    // Read grid dimensions
     int nx = grid_.get_nx();
     int ny = grid_.get_ny();
+    int size = nx * ny;
+    
+    // Get the number of DOFs from the Vec
+    PetscInt vec_size;
+    VecGetSize(X, &vec_size);
+    int dofs = vec_size / size;  // Total DOFs per node
+    
+    // Create sequential vector for reading on all ranks
+    Vec X_seq;
+    VecScatter ctx;
+    VecScatterCreateToAll(X, &ctx, &X_seq);
+    
+    // Allocate buffer for reading
+    std::vector<double> buffer(size);
+    
+    // On rank 0, read all datasets
+    int rank;
+    MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
     
     PetscScalar* x_ptr;
-    VecGetArray(X, &x_ptr); // Local array? 
-    // Restart on parallel run requires care. 
-    // Assuming gathered X or identical layout. 
-    // For simplicity, we assume serial read on rank 0 and scatter, OR parallel file read.
-    // Let's implement serial read and broadcast for now or just serial logic (assuming 1 proc for check).
+    VecGetArray(X_seq, &x_ptr);
     
-    // ... Implementation simplified for brevity ...
-    // Reading HDF5 datasets "phi", "n_k" back into buffer and putting into X.
+    if (rank == 0) {
+        // Read species densities (n_0, n_1, ...)
+        int num_species = dofs - 2;  // Subtract phi and n_eps
+        for (int k = 0; k < num_species; ++k) {
+            std::string dset_name = "n_" + std::to_string(k);
+            hid_t dataset = H5Dopen(group, dset_name.c_str(), H5P_DEFAULT);
+            if (dataset >= 0) {
+                H5Dread(dataset, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, buffer.data());
+                H5Dclose(dataset);
+                
+                // Interleave into X_seq
+                for (int j = 0; j < ny; ++j) {
+                    for (int i = 0; i < nx; ++i) {
+                        int idx = (j * nx + i) * dofs + k;
+                        x_ptr[idx] = buffer[j * nx + i];
+                    }
+                }
+            }
+        }
+        
+        // Read electron energy (n_eps)
+        hid_t dset_eps = H5Dopen(group, "n_eps", H5P_DEFAULT);
+        if (dset_eps >= 0) {
+            H5Dread(dset_eps, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, buffer.data());
+            H5Dclose(dset_eps);
+            
+            int idx_eps = dofs - 2;
+            for (int j = 0; j < ny; ++j) {
+                for (int i = 0; i < nx; ++i) {
+                    int idx = (j * nx + i) * dofs + idx_eps;
+                    x_ptr[idx] = buffer[j * nx + i];
+                }
+            }
+        }
+        
+        // Read potential (phi)
+        hid_t dset_phi = H5Dopen(group, "phi", H5P_DEFAULT);
+        if (dset_phi >= 0) {
+            H5Dread(dset_phi, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, buffer.data());
+            H5Dclose(dset_phi);
+            
+            int idx_phi = dofs - 1;
+            for (int j = 0; j < ny; ++j) {
+                for (int i = 0; i < nx; ++i) {
+                    int idx = (j * nx + i) * dofs + idx_phi;
+                    x_ptr[idx] = buffer[j * nx + i];
+                }
+            }
+        }
+    }
+    
+    VecRestoreArray(X_seq, &x_ptr);
+    
+    // Scatter from sequential to parallel
+    VecScatterBegin(ctx, X_seq, X, INSERT_VALUES, SCATTER_REVERSE);
+    VecScatterEnd(ctx, X_seq, X, INSERT_VALUES, SCATTER_REVERSE);
+    
+    VecScatterDestroy(&ctx);
+    VecDestroy(&X_seq);
     
     H5Gclose(group);
     H5Fclose(fid);

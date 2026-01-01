@@ -1,14 +1,21 @@
 mesh:
   type: 1D_rectilinear
   x_nodes: [0.0, 0.001, 0.005, 0.01]
-  y_nodes: 1 # Uniform 1 cell for 1D
+  y_nodes: [0.0, 1.0] # Uniform 1 cell for 1D
 electrodes:
   - name: powered
     location: x_min
-    voltage: "300.0"
+    voltage_type: DC
+    voltage_amplitude: 300.0
+    frequency: 0.0
+    phase: 0.0
+    bias: 0.0
+    gamma_see: 0.1
   - name: grounded
     location: x_max
-    voltage: 0.0
+    voltage_type: DC
+    voltage_amplitude: 0.0
+    gamma_see: 0.0
 plasma:
   gas_pressure: 100.0
   background_temp: 300.0
@@ -18,18 +25,24 @@ species:
     type: electron
     charge: -1.0
     mass: 9.1e-31
+    diffusion_coeff: 0.0
     mobility_file: "data/transport.dat"
   - name: Ar+
     type: ion
     charge: 1.0
     mass: 6.6e-26
+    diffusion_coeff: 0.0
     mobility_file: "data/transport.dat"
 reactions:
   - equation: "e + Ar -> 2e + Ar+"
     type: ionization
     rate_type: constant
     a: 1e-14
+    b: 0.0
+    e_a: 0.0
+    table_file: ""
 output:
   format: hdf5
   frequency_step: 10
   save_rates: true
+  filename: "output.h5"

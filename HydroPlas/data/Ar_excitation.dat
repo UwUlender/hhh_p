@@ -1,0 +1,22 @@
+# Argon Excitation Rate Coefficient vs Electron Energy
+# Format: Energy (eV) | Rate Coefficient (m^3/s)
+# Data approximated for Ar metastable excitation
+# Reaction: e + Ar -> e + Ar* (Threshold: 11.55 eV)
+#
+# Energy(eV)  Rate(m^3/s)
+0.0           0.0
+1.0           0.0
+5.0           0.0
+10.0          1.0e-18
+11.0          1.0e-17
+12.0          5.0e-17
+13.0          1.5e-16
+15.0          4.0e-16
+17.0          8.0e-16
+20.0          1.5e-15
+25.0          2.5e-15
+30.0          3.5e-15
+40.0          5.0e-15
+50.0          6.0e-15
+75.0          7.5e-15
+100.0         8.0e-15

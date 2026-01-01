@@ -1,0 +1,192 @@
+# HydroPlas Complete Feature Demo Configuration
+# Demonstrates all implemented features including:
+# - Non-uniform stretched mesh
+# - Multi-electrode with RF/DC waveforms
+# - Electron and ion species with BOLSIG+ transport
+# - Neutral excited species (metastables)
+# - Chemical reactions with table-based rates
+# - Secondary electron emission
+# - Full checkpoint/restart support
+
+mesh:
+  type: 2D_rectilinear
+  # Stretched mesh: high resolution near electrodes (0, 0.02m)
+  # x_nodes specifies face positions for non-uniform mesh
+  x_nodes: [
+    0.0,      # Powered electrode
+    0.0001,   # Fine resolution in sheath (100 µm)
+    0.0003,   # 
+    0.0006,   #
+    0.001,    # 1 mm
+    0.002,    # Coarser in bulk
+    0.005,    #
+    0.010,    # 1 cm
+    0.015,    #
+    0.0194,   # Fine resolution near ground
+    0.0197,   #
+    0.0199,   #
+    0.02      # Grounded electrode at 2 cm
+  ]
+  y_nodes: [0.0, 0.005, 0.01, 0.015, 0.02]  # 2D: 4 cells in y
+
+# Multi-electrode configuration with various waveforms
+electrodes:
+  # Powered electrode with dual-frequency RF
+  - name: powered_electrode
+    location: x_min
+    voltage_type: RF
+    voltage_amplitude: 200.0      # Volts
+    frequency: 13.56e6            # 13.56 MHz (standard RF)
+    phase: 0.0                    # radians
+    bias: -50.0                   # DC bias offset
+    gamma_see: 0.1                # Secondary electron emission coefficient
+    is_dielectric: false
+    
+  # Grounded electrode (with optional dielectric barrier)
+  - name: ground_electrode
+    location: x_max
+    voltage_type: DC
+    voltage_amplitude: 0.0        # Ground
+    gamma_see: 0.05
+    is_dielectric: true           # Dielectric barrier discharge (DBD)
+    dielectric_permittivity: 4.0  # Relative permittivity
+    dielectric_thickness: 0.001   # 1 mm barrier
+    
+  # Optional: Additional electrode for 3-electrode configuration
+  # - name: biased_electrode
+  #   location: y_max
+  #   voltage_type: PULSE
+  #   voltage_amplitude: 100.0
+  #   frequency: 1000.0           # 1 kHz pulse
+  #   duty_cycle: 0.3             # 30% on time
+  #   gamma_see: 0.02
+
+# Plasma conditions
+plasma:
+  gas_pressure: 100.0             # Pa (1 Torr ≈ 133 Pa)
+  background_temp: 300.0          # K (room temperature)
+  background_gas: Ar              # Argon
+
+# Species definitions
+species:
+  # Electron with BOLSIG+ transport data
+  - name: e
+    type: electron
+    charge: -1.0                  # Elementary charge units
+    mass: 9.10938e-31            # kg
+    diffusion_coeff: 0.0         # Not used (from table)
+    mobility_file: data/transport.dat  # BOLSIG+ format: Energy | Mobility | Diffusion
+    
+  # Argon ion
+  - name: Ar+
+    type: ion
+    charge: 1.0
+    mass: 6.6335e-26             # kg (40 amu)
+    diffusion_coeff: 0.0
+    mobility_file: data/transport.dat
+    
+  # Neutral excited species (metastable)
+  - name: Ar*
+    type: neutral
+    charge: 0.0
+    mass: 6.6335e-26
+    diffusion_coeff: 0.04        # m^2/s (constant for neutrals)
+    mobility_file: ""            # Not used for neutrals
+    
+  # Optional: Ground state (for advanced chemistry)
+  # - name: Ar
+  #   type: neutral
+  #   charge: 0.0
+  #   mass: 6.6335e-26
+  #   diffusion_coeff: 0.02
+
+# Chemical reactions
+reactions:
+  # Ionization: e + Ar -> 2e + Ar+
+  - equation: "e + Ar -> 2e + Ar+"
+    type: ionization
+    rate_type: table              # Lookup from file based on electron energy
+    a: 0.0                        # Not used for table type
+    b: 0.0
+    e_a: 0.0
+    table_file: data/Ar_ionization.dat  # Format: Energy(eV) | Rate(m^3/s)
+    
+  # Excitation: e + Ar -> e + Ar*
+  - equation: "e + Ar -> e + Ar*"
+    type: excitation
+    rate_type: table
+    table_file: data/Ar_excitation.dat
+    
+  # Metastable quenching (2-body): Ar* + Ar* -> Ar+ + e + Ar
+  - equation: "Ar* + Ar* -> Ar+ + e + Ar"
+    type: penning
+    rate_type: constant
+    a: 5.0e-16                   # m^3/s
+    
+  # Stepwise ionization: e + Ar* -> 2e + Ar+
+  - equation: "e + Ar* -> 2e + Ar+"
+    type: stepwise_ionization
+    rate_type: constant
+    a: 1.0e-13
+    
+  # Recombination (simplified, normally 3-body)
+  - equation: "e + Ar+ -> Ar"
+    type: recombination
+    rate_type: arrhenius
+    a: 1.0e-19                   # Pre-exponential factor
+    b: -0.5                      # Temperature exponent
+    e_a: 0.0                     # Activation energy (eV)
+
+# Solver configuration (implicit in code, but shown for reference)
+solver:
+  type: JFNK                      # Jacobian-Free Newton-Krylov
+  tolerance: 1.0e-6               # SNES tolerance
+  max_iterations: 50
+  time_step: 1.0e-12             # seconds (1 ps)
+  end_time: 1.0e-9               # 1 ns simulation
+  preconditioner: PBP             # Physics-Based Preconditioner
+  ksp_type: GMRES                 # Krylov subspace method
+
+# Output configuration
+output:
+  format: hdf5                    # HDF5 for Python compatibility
+  filename: plasma_complete_demo.h5
+  frequency_step: 100             # Save every 100 time steps
+  save_rates: true                # Save spatial reaction rates
+  save_fields:                    # Which fields to output
+    - electron_density
+    - ion_density
+    - potential
+    - electric_field
+    - electron_energy
+    - metastable_density
+    - rates
+  
+  # Checkpoint configuration
+  checkpoint_frequency: 1000      # Save checkpoint every 1000 steps
+  checkpoint_filename: checkpoint.h5
+
+# Restart (command-line flag overrides)
+# Usage: ./HydroPlas --config this_file.yaml --restart checkpoint.h5 --restart_step 5000
+restart:
+  enabled: false
+  file: checkpoint.h5
+  step: 0
+
+# Advanced features
+advanced:
+  # Adaptive time stepping
+  adaptive_dt: false
+  dt_min: 1.0e-13
+  dt_max: 1.0e-10
+  
+  # Parallel configuration
+  mpi_decomposition: auto         # or specify: [nx_procs, ny_procs]
+  
+  # Convergence criteria
+  density_floor: 1.0e6           # Minimum density (1/m^3)
+  energy_floor: 0.1              # Minimum electron energy (eV)
+  
+  # Boundary condition details
+  wall_quenching_probability: 0.1  # For metastables
+  thermal_velocity_factor: 0.25    # For thermal flux BCs

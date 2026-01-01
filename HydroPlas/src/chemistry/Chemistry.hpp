@@ -17,7 +17,10 @@ struct Reaction {
     std::string type; // "constant", "arrhenius", "table"
     double k_const;
     double A, b, E_a;
-    // Table lookups if needed
+    
+    // Table lookup for electron-impact reactions
+    LookupTable rate_table;
+    bool has_rate_table = false;
     
     // Helper to calculate rate coefficient
     double get_rate_coeff(double mean_energy, double T_gas) const;
