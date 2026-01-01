@@ -11,6 +11,9 @@ public:
     // Load from BOLSIG+ text file
     // Expects specific column mapping
     void load(const std::string& filename);
+    
+    // Load single-column rate data (Energy, Rate)
+    void load_rate(const std::string& filename);
 
     // Interpolate values based on Mean Energy (epsilon)
     // Returns: mobility, diffusion, temperature(if needed)
@@ -18,15 +21,13 @@ public:
     double get_diffusion(double energy) const;
     
     // For reaction rates
-    double get_rate(double energy, int reaction_index) const;
+    double get_rate(double energy) const;
 
 private:
     std::vector<double> energy_grid_;
     std::vector<double> mobility_data_;
     std::vector<double> diffusion_data_;
-    // Map reaction index to data vector
-    // For simplicity, we might need a more complex mapping if multiple reactions use the table
-    // or just store raw columns.
+    std::vector<double> rate_data_;
     
     double interpolate(const std::vector<double>& x, const std::vector<double>& y, double val) const;
 };

@@ -69,7 +69,7 @@ void RectilinearGrid::initialize(int num_dofs) {
     DMSetFromOptions(dm_);
     DMSetUp(dm_);
     
-    DMSetUniformCoordinates(dm_, x_faces_.front(), x_faces_.back(), y_faces_.front(), y_faces_.back());
+    DMDASetUniformCoordinates(dm_, x_faces_.front(), x_faces_.back(), y_faces_.front(), y_faces_.back(), 0.0, 1.0);
 }
 
 double RectilinearGrid::get_cell_volume(int i, int j) const {

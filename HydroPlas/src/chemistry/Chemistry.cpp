@@ -32,6 +32,12 @@ void Chemistry::parse_reactions(const std::vector<ReactionConfig>& r_configs) {
         r.b = rc.b;
         r.E_a = rc.e_a;
         
+        // Load rate table if specified
+        if (rc.rate_type == "table" && !rc.table_file.empty()) {
+            r.rate_table.load_rate(rc.table_file);
+            r.has_rate_table = true;
+        }
+        
         parse_equation(r, rc.equation);
         reactions_.push_back(r);
     }
@@ -82,9 +88,9 @@ double Reaction::get_rate_coeff(double mean_energy, double T_gas) const {
     } else if (type == "arrhenius") {
         return A * std::pow(T_gas, b) * std::exp(-E_a / T_gas);
     } else if (type == "table") {
-        // Placeholder for table lookup
-        // Ideally pass Species object or LookupTable here
-        // For now, return a dummy or map logic
+        if (has_rate_table) {
+            return rate_table.get_rate(mean_energy);
+        }
         return 0.0;
     }
     return 0.0;

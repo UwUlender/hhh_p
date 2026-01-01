@@ -3,6 +3,7 @@
 #include "../io/OutputManager.hpp" 
 #include <iostream>
 #include <cmath>
+#include <mpi.h>
 
 namespace HydroPlas {
 
@@ -66,7 +67,7 @@ void PlasmaSolver::setup_solver() {
     SNESSetFunction(snes_, F_, FormFunction, &ctx_);
     
     Mat J;
-    MatCreateSNESMF(snes_, X_, &J);
+    MatCreateSNESMF(snes_, &J);
     DMCreateMatrix(grid_.get_dm(), &P_poisson_); 
     SNESSetJacobian(snes_, J, P_poisson_, FormJacobian, &ctx_);
     MatDestroy(&J);
@@ -96,9 +97,9 @@ void PlasmaSolver::solve_step(double dt, double time) {
 }
 
 void PlasmaSolver::save_state(const std::string& filename, int step, double time) {
-    // Use HDF5 to save X_
+    // Use binary viewer to save X_
     PetscViewer viewer;
-    PetscViewerHDF5Open(PETSC_COMM_WORLD, filename.c_str(), FILE_MODE_WRITE, &viewer);
+    PetscViewerBinaryOpen(PETSC_COMM_WORLD, filename.c_str(), FILE_MODE_WRITE, &viewer);
     VecView(X_, viewer);
     PetscViewerDestroy(&viewer);
 }
@@ -107,17 +108,12 @@ void PlasmaSolver::save_rates(OutputManager& output, int step) {
     // Compute rates
     int nx = grid_.get_nx();
     int ny = grid_.get_ny();
-    int num_reactions = chemistry_.get_num_reactions(); // Need this accessor
+    int num_reactions = chemistry_.get_reactions().size();
     
     // Prepare data structure: rates[reaction_idx][cell_idx]
     std::vector<std::vector<double>> rates_data(num_reactions, std::vector<double>(nx*ny, 0.0));
     
-    // Loop over grid (local)
-    // For output, we need global data. 
-    // Simplified: Gather X to rank 0, compute rates there? 
-    // Or compute local and gather rates.
-    // Let's compute local and not worry about MPI for this snippet.
-    
+    // Get local vector
     Vec Xloc;
     DMGetLocalVector(grid_.get_dm(), &Xloc);
     DMGlobalToLocalBegin(grid_.get_dm(), X_, INSERT_VALUES, Xloc);
@@ -129,18 +125,65 @@ void PlasmaSolver::save_rates(OutputManager& output, int step) {
     int xs, ys, xm, ym;
     DMDAGetCorners(grid_.get_dm(), &xs, &ys, NULL, &xm, &ym, NULL);
     
-    // This loop only covers local owned cells. 
-    // OutputManager expects full grid data (since it writes full vectors).
-    // We should probably rely on OutputManager to handle parallel gathering.
-    // But passing partial data to OutputManager::write_rates is tricky if it expects full 2D arrays.
+    int num_species = chemistry_.get_num_species();
+    int idx_eps = ctx_.idx_n_eps;
     
-    // Hack: Just fill the part we know, other parts 0.
-    // In real MPI, OutputManager should use parallel HDF5 or gather.
+    const auto& reactions = chemistry_.get_reactions();
+    const auto& species = chemistry_.get_species();
     
-    // ... Computation ...
+    // Compute rates for local cells
+    for (int j = ys; j < ys + ym; ++j) {
+        for (int i = xs; i < xs + xm; ++i) {
+            // Gather densities
+            std::vector<double> densities(num_species);
+            for (int k = 0; k < num_species; ++k) {
+                densities[k] = x[j][i][k];
+            }
+            
+            // Calculate mean energy
+            double n_e = 0.0;
+            for (int k = 0; k < num_species; ++k) {
+                if (species[k].type == SpeciesType::Electron) {
+                    n_e = densities[k];
+                    break;
+                }
+            }
+            
+            double n_eps = x[j][i][idx_eps];
+            double mean_en = (n_e > 1e6) ? n_eps / n_e : 0.0;
+            mean_en = std::max(0.0, std::min(mean_en, 100.0));
+            
+            // Calculate rate for each reaction
+            for (size_t r = 0; r < reactions.size(); ++r) {
+                double k = reactions[r].get_rate_coeff(mean_en, config_.plasma.background_temp);
+                
+                // R_rate = k * prod(n_reactants^stoich)
+                double R_rate = k;
+                for (const auto& pair : reactions[r].reactants) {
+                    int idx = pair.first;
+                    int stoich = pair.second;
+                    R_rate *= std::pow(densities[idx], stoich);
+                }
+                
+                // Store in global index
+                int global_idx = j * nx + i;
+                rates_data[r][global_idx] = R_rate;
+            }
+        }
+    }
     
     DMDAVecRestoreArrayDOF(grid_.get_dm(), Xloc, &x);
     DMRestoreLocalVector(grid_.get_dm(), &Xloc);
+    
+    // Gather rates from all processes
+    // For simplicity with MPI, use MPI_Allreduce with MPI_SUM
+    // (cells not owned by a rank have 0, so sum gives correct result)
+    for (size_t r = 0; r < num_reactions; ++r) {
+        std::vector<double> global_rates(nx * ny, 0.0);
+        MPI_Allreduce(rates_data[r].data(), global_rates.data(), nx * ny, 
+                      MPI_DOUBLE, MPI_SUM, PETSC_COMM_WORLD);
+        rates_data[r] = global_rates;
+    }
     
     output.write_rates(step, rates_data, nx, ny);
 }
@@ -205,8 +248,9 @@ PetscErrorCode FormFunction(SNES snes, Vec X, Vec F, void* ctx_void) {
             for (int k=0; k<num_species; ++k) densities[k] = x[j][i][k];
             double n_e = 0.0;
             // Find electron
+            const auto& species = chem->get_species();
             for(int k=0; k<num_species; ++k) {
-                if(chem->get_species(k).type == SpeciesType::Electron) {
+                if(species[k].type == SpeciesType::Electron) {
                      n_e = densities[k];
                      break;
                 }
@@ -270,8 +314,9 @@ PetscErrorCode FormFunction(SNES snes, Vec X, Vec F, void* ctx_void) {
             double E_field = -dphi / dx;
             
             // Species Fluxes
+            const auto& species = chem->get_species();
             for (int k=0; k<num_species; ++k) {
-                const auto& sp = chem->get_species(k);
+                const auto& sp = species[k];
                 double n_L = x[j][iL][k];
                 double n_R = x[j][iR][k];
                 
@@ -343,8 +388,9 @@ PetscErrorCode FormFunction(SNES snes, Vec X, Vec F, void* ctx_void) {
              
              // Get Rho
              double rho = 0.0;
+             const auto& species = chem->get_species();
              for (int k=0; k<num_species; ++k) {
-                 rho += x[j][i][k] * chem->get_species(k).charge * q_e;
+                 rho += x[j][i][k] * species[k].charge * q_e;
              }
              
              // Calculate Phi Fluxes
@@ -360,6 +406,7 @@ PetscErrorCode FormFunction(SNES snes, Vec X, Vec F, void* ctx_void) {
              double flux_phi_L = epsilon_0 * (phi_C - phi_L) / dx_L;
              
              double div_phi = (flux_phi_R * grid->get_face_area_x(i, j) - flux_phi_L * grid->get_face_area_x(i-1, j));
+             double vol = grid->get_cell_volume(i, j);
              
              f[j][i][idx_phi] -= div_phi;
              f[j][i][idx_phi] -= rho * vol;
@@ -373,19 +420,46 @@ PetscErrorCode FormFunction(SNES snes, Vec X, Vec F, void* ctx_void) {
     if (xs == 0) {
         for (int j=ys; j<ys+ym; ++j) {
              double t = ctx->time;
-             double V = boundary->get_electrode_voltage("Left", t); // Assume named "Left" or index 0
+             double V = boundary->get_electrode_voltage("Left", t);
              // Hard Dirichlet: f = phi - V
              // Overwrite residual
              f[j][0][idx_phi] = x[j][0][idx_phi] - V;
              
-             // Also need to handle Species BC at Wall
-             // Flux = ...
-             // For now, simpler to just set Density = 0 for charged species at wall?
-             // Or leave flux calc handle it (if Flux_L uses ghost which is set to boundary value).
-             // Let's set ghosts values before loop? No, ghosts are from X.
-             // We can enforce Dirichlet density = 0 at wall
+             // Species BC at Wall with SEE
+             double gamma_see = boundary->get_electrode_gamma_see("Left");
+             const auto& species = chem->get_species();
+             
+             // Calculate ion flux to wall (sum of all positive ions)
+             double ion_flux = 0.0;
+             int electron_idx = -1;
+             
              for (int k=0; k<num_species; ++k) {
-                 // f[j][0][k] = x[j][0][k] - 0.0; 
+                 if (species[k].type == SpeciesType::Electron) {
+                     electron_idx = k;
+                 } else if (species[k].charge > 0) {
+                     // Ion flux approximation (drift term dominates at cathode)
+                     double n_wall = x[j][0][k];
+                     double E_wall = -(x[j][1][idx_phi] - x[j][0][idx_phi]) / grid->get_dx(0);
+                     double mu, D;
+                     species[k].get_transport(0.0, mu, D);
+                     double v_ion = mu * E_wall;
+                     ion_flux += n_wall * std::abs(v_ion);
+                 }
+             }
+             
+             // Apply SEE: add electron source at cathode
+             if (electron_idx >= 0 && gamma_see > 0.0) {
+                 double area = grid->get_face_area_x(0, j);
+                 double see_source = gamma_see * ion_flux * area;
+                 // Add to electron residual (negative because source term)
+                 f[j][0][electron_idx] -= see_source;
+             }
+             
+             // Set zero density BC for ions at walls (absorption)
+             for (int k=0; k<num_species; ++k) {
+                 if (species[k].charge > 0) {
+                     f[j][0][k] = x[j][0][k]; // Enforce n = 0
+                 }
              }
         }
     }
@@ -393,8 +467,40 @@ PetscErrorCode FormFunction(SNES snes, Vec X, Vec F, void* ctx_void) {
     if (xs + xm == nx) {
         for (int j=ys; j<ys+ym; ++j) {
              double t = ctx->time;
-             double V = boundary->get_electrode_voltage("Right", t); // Assume named "Right" or index 1
+             double V = boundary->get_electrode_voltage("Right", t);
              f[j][nx-1][idx_phi] = x[j][nx-1][idx_phi] - V;
+             
+             // Species BC with SEE
+             double gamma_see = boundary->get_electrode_gamma_see("Right");
+             const auto& species = chem->get_species();
+             
+             double ion_flux = 0.0;
+             int electron_idx = -1;
+             
+             for (int k=0; k<num_species; ++k) {
+                 if (species[k].type == SpeciesType::Electron) {
+                     electron_idx = k;
+                 } else if (species[k].charge > 0) {
+                     double n_wall = x[j][nx-1][k];
+                     double E_wall = -(x[j][nx-1][idx_phi] - x[j][nx-2][idx_phi]) / grid->get_dx(nx-1);
+                     double mu, D;
+                     species[k].get_transport(0.0, mu, D);
+                     double v_ion = mu * E_wall;
+                     ion_flux += n_wall * std::abs(v_ion);
+                 }
+             }
+             
+             if (electron_idx >= 0 && gamma_see > 0.0) {
+                 double area = grid->get_face_area_x(nx-1, j);
+                 double see_source = gamma_see * ion_flux * area;
+                 f[j][nx-1][electron_idx] -= see_source;
+             }
+             
+             for (int k=0; k<num_species; ++k) {
+                 if (species[k].charge > 0) {
+                     f[j][nx-1][k] = x[j][nx-1][k];
+                 }
+             }
         }
     }
 
