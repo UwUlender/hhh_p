@@ -8,6 +8,9 @@
 
 namespace HydroPlas {
 
+// Forward declaration
+class OutputManager;
+
 struct SolverContext {
     RectilinearGrid* grid;
     Chemistry* chemistry;
