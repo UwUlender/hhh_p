@@ -28,4 +28,6 @@ public:
     void get_transport(double mean_energy, double& mu, double& D) const;
 };
 
+class Chemistry; // Forward
+
 } // namespace HydroPlas

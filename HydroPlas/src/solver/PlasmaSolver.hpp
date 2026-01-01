@@ -3,6 +3,7 @@
 #include <petscdmda.h>
 #include "../mesh/RectilinearGrid.hpp"
 #include "../chemistry/Chemistry.hpp"
+#include "../boundary/BoundaryManager.hpp"
 #include "../config/ConfigParser.hpp"
 
 namespace HydroPlas {
@@ -10,15 +11,20 @@ namespace HydroPlas {
 struct SolverContext {
     RectilinearGrid* grid;
     Chemistry* chemistry;
+    BoundaryManager* boundary;
     SimulationConfig* config;
     
+    Vec X_prev;
+    double dt;
+    double time;
+
     int idx_phi;
     int idx_n_eps;
 };
 
 class PlasmaSolver {
 public:
-    PlasmaSolver(RectilinearGrid& grid, Chemistry& chemistry, SimulationConfig& config);
+    PlasmaSolver(RectilinearGrid& grid, Chemistry& chemistry, BoundaryManager& boundary, SimulationConfig& config);
     ~PlasmaSolver();
 
     void initialize();
@@ -32,6 +38,8 @@ public:
     
     // Accessor for Output
     Vec get_solution() const { return X_; }
+    
+    void save_rates(OutputManager& output, int step);
 
 private:
     RectilinearGrid& grid_;
@@ -42,6 +50,8 @@ private:
     Vec X_; 
     Vec F_; 
     
+    BoundaryManager& boundary_;
+
     SolverContext ctx_;
     
     double current_dt_;

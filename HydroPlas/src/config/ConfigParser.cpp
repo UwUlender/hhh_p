@@ -3,6 +3,7 @@
 #include <sstream>
 #include <iostream>
 #include <stdexcept>
+#include <regex>
 
 namespace HydroPlas {
 
@@ -58,15 +59,48 @@ void ConfigParser::parse_yaml(const YAML::Node& root) {
             ElectrodeConfig ec;
             ec.name = el["name"].as<std::string>();
             ec.location = el["location"].as<std::string>();
+            
+            if (el["type"]) ec.voltage_type = el["type"].as<std::string>();
+            else ec.voltage_type = "DC";
+            
+            if (el["amplitude"]) ec.voltage_amplitude = el["amplitude"].as<double>();
+            if (el["frequency"]) ec.frequency = el["frequency"].as<double>();
+            if (el["phase"]) ec.phase = el["phase"].as<double>();
+            if (el["bias"]) ec.bias = el["bias"].as<double>();
+            if (el["duty_cycle"]) ec.duty_cycle = el["duty_cycle"].as<double>();
+            
+            if (el["voltage_expression"]) {
+                ec.voltage_expression = el["voltage_expression"].as<std::string>();
+                ec.voltage_type = "Expression";
+            }
+
             if (el["voltage"]) {
                 // Check if string or number
                 try {
-                    ec.constant_voltage = el["voltage"].as<double>();
-                    ec.voltage_expression = std::to_string(ec.constant_voltage);
+                    double v = el["voltage"].as<double>();
+                    ec.voltage_amplitude = v;
+                    if (ec.voltage_type == "DC") ec.bias = v;
                 } catch (...) {
                     ec.voltage_expression = el["voltage"].as<std::string>();
+                    ec.voltage_type = "Expression";
+                    
+                    // Try to parse "A * sin(2*pi*f*t)"
+                    std::regex re("([\\d\\.]+)\\s*\\*\\s*sin\\(2\\*pi\\*([\\d\\.eE\\+\\-]+)\\*t\\)");
+                    std::smatch match;
+                    if (std::regex_search(ec.voltage_expression, match, re)) {
+                        ec.voltage_amplitude = std::stod(match[1]);
+                        ec.frequency = std::stod(match[2]);
+                        ec.voltage_type = "RF"; // Treat as RF
+                    }
                 }
             }
+            
+            if (el["dielectric"]) ec.is_dielectric = el["dielectric"].as<bool>();
+            if (el["permittivity"]) ec.dielectric_permittivity = el["permittivity"].as<double>();
+            if (el["thickness"]) ec.dielectric_thickness = el["thickness"].as<double>();
+            
+            if (el["gamma_see"]) ec.gamma_see = el["gamma_see"].as<double>();
+            
             config_.electrodes.push_back(ec);
         }
     }

@@ -17,8 +17,24 @@ struct MeshConfig {
 struct ElectrodeConfig {
     std::string name;
     std::string location; // "x_min", "x_max", "y_min", "y_max" or specific coords
-    std::string voltage_expression; // "300 * sin(...)"
-    double constant_voltage = 0.0;
+    
+    // Voltage definition
+    std::string voltage_type; // "DC", "RF", "PULSE", "Expression"
+    double voltage_amplitude = 0.0;
+    double frequency = 0.0;
+    double phase = 0.0;
+    double bias = 0.0;
+    double duty_cycle = 0.5;
+    
+    std::string voltage_expression; // For "Expression" type
+    
+    // Dielectric
+    bool is_dielectric = false;
+    double dielectric_permittivity = 1.0;
+    double dielectric_thickness = 0.0;
+    
+    // Species BC
+    double gamma_see = 0.0;
 };
 
 struct PlasmaConfig {
