@@ -1,75 +1,70 @@
-#include <petscsys.h>
+#include <petsc.h>
 #include <iostream>
 #include "config/ConfigParser.hpp"
-#include "mesh/MeshGenerator.hpp"
-#include "solver/Solver.hpp"
-#include "chemistry/BolsigInterface.hpp"
+#include "mesh/RectilinearGrid.hpp"
+#include "chemistry/Chemistry.hpp"
+#include "solver/PlasmaSolver.hpp"
+#include "io/OutputManager.hpp"
 
-static char help[] = "HydroPlas: Hydrodynamic Plasma Simulation Framework.\n\n";
+static char help[] = "Hydrodynamic Plasma Simulation Code\n\n";
+
+using namespace HydroPlas;
 
 int main(int argc, char **argv) {
     PetscErrorCode ierr;
-    
-    // Initialize PETSc
-    ierr = PetscInitialize(&argc, &argv, (char *)0, help); if (ierr) return ierr;
+    ierr = PetscInitialize(&argc, &argv, (char*)0, help); if (ierr) return ierr;
+
+    std::string config_file = "config/default_config.yaml";
+    char conf[256];
+    PetscBool flg;
+    PetscOptionsGetString(NULL, NULL, "-config", conf, sizeof(conf), &flg);
+    if (flg) config_file = conf;
 
     try {
-        std::cout << "Initializing HydroPlas..." << std::endl;
-
-        // Load Configuration
-        std::string config_file = "config/default_config.json";
-        if (argc > 1) {
-            config_file = argv[1];
+        PetscPrintf(PETSC_COMM_WORLD, "Reading configuration from %s\n", config_file.c_str());
+        // Note: For actual run, ensure default_config.yaml exists or pass valid one
+        ConfigParser parser(config_file);
+        SimulationConfig config = parser.get_config();
+        
+        PetscPrintf(PETSC_COMM_WORLD, "Initializing Grid...\n");
+        RectilinearGrid grid(config.mesh);
+        
+        PetscPrintf(PETSC_COMM_WORLD, "Initializing Chemistry...\n");
+        Chemistry chemistry(config);
+        
+        PetscPrintf(PETSC_COMM_WORLD, "Initializing Solver...\n");
+        PlasmaSolver solver(grid, chemistry, config);
+        solver.initialize(); 
+        
+        PetscPrintf(PETSC_COMM_WORLD, "Initializing Output...\n");
+        OutputManager output(config.output, grid);
+        output.write_mesh();
+        
+        double t = 0.0;
+        double dt = 1e-12; 
+        double t_end = 1e-9; 
+        
+        int step = 0;
+        int output_freq = (config.output.frequency_step > 0) ? config.output.frequency_step : 100;
+        
+        PetscPrintf(PETSC_COMM_WORLD, "Starting Simulation...\n");
+        
+        while (t < t_end) {
+            solver.solve_step(dt, t);
+            
+            t += dt;
+            step++;
+            
+            if (step % output_freq == 0) {
+                 PetscPrintf(PETSC_COMM_WORLD, "Step %d, Time %g\n", step, t);
+                 output.write_state(t, step, solver.get_solution(), chemistry.get_num_species());
+            }
         }
-        std::cout << "Loading configuration from: " << config_file << std::endl;
         
-        HydroPlas::ConfigParser parser(config_file);
-        HydroPlas::SimulationConfig config = parser.get_config();
-
-        std::cout << "Configuration loaded." << std::endl;
-        std::cout << "Domain: " << config.domain.Nx << " x " << config.domain.Ny << std::endl;
-
-        if (config.chemistry.mode == "Inline BOLSIG+") {
-            std::string generated_table = "bolsig_output.dat";
-            HydroPlas::BolsigInterface::run_bolsig(config.chemistry, generated_table);
-            config.chemistry.transport_table_file = generated_table;
-        }
-
-        // Calculate total DOFs
-        // 0: ne, 1: ni, 2: neps, 3: phi, 4: sigma
-        // 5..: excited species
-        int base_dofs = 5;
-        int excited_dofs = config.chemistry.excited_species.size();
-        int total_dofs = base_dofs + excited_dofs;
-        std::cout << "Total DOFs: " << total_dofs << " (" << excited_dofs << " excited species)" << std::endl;
-
-        // Create Mesh
-        HydroPlas::MeshGenerator meshGen(config.domain);
-        DM dm;
-        ierr = meshGen.create_dm(&dm, total_dofs); CHKERRQ(ierr);
-
-        std::cout << "Mesh generated." << std::endl;
-
-        // Create and Init Solver
-        HydroPlas::Solver solver(dm, config);
-        ierr = solver.init(); CHKERRQ(ierr);
-        
-        std::cout << "Solver initialized. Starting simulation..." << std::endl;
-        
-        // Solve
-        ierr = solver.solve(); CHKERRQ(ierr);
-
-        std::cout << "Simulation completed." << std::endl;
-
-        // Cleanup
-        ierr = DMDestroy(&dm); CHKERRQ(ierr);
-
     } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
-        // Proceed to finalize
+        PetscPrintf(PETSC_COMM_WORLD, "Error: %s\n", e.what());
     }
 
-    std::cout << "Finalizing..." << std::endl;
     ierr = PetscFinalize();
     return ierr;
 }
