@@ -1,86 +1,78 @@
 #include "LookupTable.hpp"
 #include <fstream>
 #include <sstream>
-#include <algorithm>
 #include <cmath>
-#include <stdexcept>
+#include <algorithm>
 #include <iostream>
 
 namespace HydroPlas {
 
-void LookupTable::load_from_file(const std::string& filepath) {
-    std::ifstream file(filepath);
-    if (!file.is_open()) {
-        throw std::runtime_error("Cannot open lookup table: " + filepath);
-    }
+void LookupTable::load(const std::string& filename) {
+    std::ifstream fin(filename);
+    if (!fin.is_open()) return; // Warning log?
 
-    // Assume first line is header: Energy Mobility Diff ...
+    // Generic simple parser for 2-column or multicolumn
+    // Assuming: Energy | Mobility | Diffusion
+    // Skip headers
     std::string line;
-    // Skip comments
-    while (std::getline(file, line)) {
-        if (!line.empty() && line[0] != '#') break;
-    }
-    
-    std::stringstream ss(line);
-    std::string col;
-    std::vector<std::string> headers;
-    while (ss >> col) {
-        headers.push_back(col);
-    }
-    
-    // Resize vectors
-    for (const auto& h : headers) {
-        if (h != "Energy") data_columns_[h] = {};
-    }
-
-    while (std::getline(file, line)) {
-        if (line.empty() || line[0] == '#') continue;
-        std::stringstream dss(line);
-        double val;
-        int idx = 0;
-        double energy_val = 0;
-        
-        // Read line
-        std::vector<double> row_values;
-        while (dss >> val) {
-            row_values.push_back(val);
-        }
-
-        if (row_values.size() != headers.size()) continue;
-
-        energy_grid_.push_back(row_values[0]);
-        for (size_t i = 1; i < headers.size(); ++i) {
-            data_columns_[headers[i]].push_back(row_values[i]);
-        }
+    while (std::getline(fin, line)) {
+        if (line.empty() || !isdigit(line[0])) continue; // rudimentary skip
+        std::stringstream ss(line);
+        double e, mu, d;
+        ss >> e >> mu >> d;
+        energy_grid_.push_back(e);
+        mobility_data_.push_back(mu);
+        diffusion_data_.push_back(d);
     }
 }
 
-double LookupTable::interpolate(double energy, const std::string& column_name) const {
-    if (energy_grid_.empty()) return 0.0;
-    if (data_columns_.find(column_name) == data_columns_.end()) {
-        throw std::runtime_error("Column not found: " + column_name);
-    }
+double LookupTable::interpolate(const std::vector<double>& x, const std::vector<double>& y, double val) const {
+    if (x.empty()) return 0.0;
+    if (val <= x.front()) return y.front();
+    if (val >= x.back()) return y.back();
 
-    const auto& y_vals = data_columns_.at(column_name);
+    auto it = std::lower_bound(x.begin(), x.end(), val);
+    size_t i = std::distance(x.begin(), it);
+    if (i == 0) i = 1;
 
-    // Find interval
-    auto it = std::lower_bound(energy_grid_.begin(), energy_grid_.end(), energy);
-    if (it == energy_grid_.begin()) return y_vals.front();
-    if (it == energy_grid_.end()) return y_vals.back();
-
-    int idx = std::distance(energy_grid_.begin(), it) - 1;
-    double x0 = energy_grid_[idx];
-    double x1 = energy_grid_[idx+1];
-    double y0 = y_vals[idx];
-    double y1 = y_vals[idx+1];
+    double x1 = x[i-1];
+    double x2 = x[i];
+    double y1 = y[i-1];
+    double y2 = y[i];
 
     // Log-Log interpolation
-    if (y0 > 1e-30 && y1 > 1e-30 && x0 > 1e-30 && x1 > 1e-30 && energy > 1e-30) {
-        double log_y = std::log(y0) + (std::log(y1) - std::log(y0)) * (std::log(energy) - std::log(x0)) / (std::log(x1) - std::log(x0));
-        return std::exp(log_y);
-    } else {
-        return y0 + (y1 - y0) * (energy - x0) / (x1 - x0);
+    // Avoid log(0)
+    if (x1 <= 1e-20 || val <= 1e-20) {
+        // Fallback to linear
+        double m = (y2 - y1) / (x2 - x1);
+        return y1 + m * (val - x1);
     }
+
+    double log_x1 = std::log(x1);
+    double log_x2 = std::log(x2);
+    double log_val = std::log(val);
+    
+    double log_y1 = (y1 > 0) ? std::log(y1) : -100.0; // Guard
+    double log_y2 = (y2 > 0) ? std::log(y2) : -100.0;
+
+    double m = (log_y2 - log_y1) / (log_x2 - log_x1);
+    double log_res = log_y1 + m * (log_val - log_x1);
+    
+    return std::exp(log_res);
+}
+
+double LookupTable::get_mobility(double energy) const {
+    return interpolate(energy_grid_, mobility_data_, energy);
+}
+
+double LookupTable::get_diffusion(double energy) const {
+    return interpolate(energy_grid_, diffusion_data_, energy);
+}
+
+double LookupTable::get_rate(double energy, int reaction_index) const {
+    // Placeholder: assumes reaction rates might be in other columns or separate structure
+    // implementation skipped for brevity unless specified
+    return 0.0; 
 }
 
 } // namespace HydroPlas

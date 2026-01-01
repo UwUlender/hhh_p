@@ -1,0 +1,50 @@
+#pragma once
+#include <vector>
+#include <string>
+#include <map>
+#include "Species.hpp"
+#include "../config/ConfigParser.hpp"
+
+namespace HydroPlas {
+
+struct Reaction {
+    std::string equation;
+    // Map species index to stoichiometric coefficient
+    std::map<int, int> reactants;
+    std::map<int, int> products;
+    
+    // Rate parameters
+    std::string type; // "constant", "arrhenius", "table"
+    double k_const;
+    double A, b, E_a;
+    // Table lookups if needed
+    
+    // Helper to calculate rate coefficient
+    double get_rate_coeff(double mean_energy, double T_gas) const;
+};
+
+class Chemistry {
+public:
+    Chemistry(const SimulationConfig& config);
+    
+    // Core method: Compute source terms for all species
+    // input: densities of all species (same order as species_list), T_e, T_gas
+    // output: S vector (size = num_species)
+    void compute_source(const std::vector<double>& densities, double mean_energy, double T_gas, std::vector<double>& sources) const;
+
+    const std::vector<Species>& get_species() const { return species_; }
+    int get_num_species() const { return species_.size(); }
+    int get_species_index(const std::string& name) const;
+    
+    // Access to reactions for rate saving
+    const std::vector<Reaction>& get_reactions() const { return reactions_; }
+
+private:
+    std::vector<Species> species_;
+    std::vector<Reaction> reactions_;
+    
+    void parse_reactions(const std::vector<ReactionConfig>& r_configs);
+    void parse_equation(Reaction& rxn, const std::string& eq);
+};
+
+} // namespace HydroPlas

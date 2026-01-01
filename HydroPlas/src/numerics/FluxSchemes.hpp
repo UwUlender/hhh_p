@@ -4,24 +4,44 @@
 
 namespace HydroPlas {
 
-// Bernoulli function B(x) = x / (exp(x) - 1)
-// Robust implementation for small x
-inline double Bernoulli(double x) {
+inline double bernoulli(double x) {
     if (std::abs(x) < 1e-4) {
-        double x2 = x * x;
-        double x4 = x2 * x2;
-        return 1.0 - x / 2.0 + x2 / 12.0 - x4 / 720.0;
+        // Taylor expansion: x / (e^x - 1) approx 1 - x/2 + x^2/12
+        return 1.0 - 0.5 * x + x * x / 12.0;
     }
     return x / (std::exp(x) - 1.0);
 }
 
-// Scharfetter-Gummel Flux from cell i to i+1
-// J_{i+1/2} = (D / dx) * [ B(-nu) * n_i - B(nu) * n_{i+1} ]
-// where nu = (v_drift * dx) / D
-// If using Potential Phi: v_drift = sgn(q) * mu * (-dPhi/dx)
-// nu = sgn(q) * mu * (Phi_i - Phi_{i+1}) / D
-inline double ScharfetterGummelFlux(double n_i, double n_ip1, double nu, double D, double dx) {
-    return (D / dx) * (Bernoulli(-nu) * n_i - Bernoulli(nu) * n_ip1);
+// Computes flux at interface i+1/2
+// n_L: density at i
+// n_R: density at i+1
+// D: diffusion coeff at interface
+// mu: signed mobility at interface (sgn(q) * |mu|)
+// dphi: phi_R - phi_L
+// dx: distance between centers
+inline double compute_sg_flux(double n_L, double n_R, double D, double mu, double dphi, double dx) {
+    // Pe = mu * dphi / D
+    // Avoid division by zero if D is tiny (unlikely in plasma except vacuum?)
+    if (D < 1e-20) return 0.0; // Or pure drift?
+    
+    double Pe = mu * dphi / D;
+    
+    // Gamma = (D/dx) * [ n_L * B(Pe) - n_R * B(-Pe) ]
+    return (D / dx) * (n_L * bernoulli(Pe) - n_R * bernoulli(-Pe));
+}
+
+// Computes neutral flux at interface i+1/2
+// u_gas: background gas velocity at interface
+inline double compute_neutral_flux(double n_L, double n_R, double D, double u_gas, double dx) {
+    // Advection: Upwind
+    double flux_adv = 0.0;
+    if (u_gas > 0) flux_adv = u_gas * n_L;
+    else flux_adv = u_gas * n_R;
+    
+    // Diffusion: Central difference
+    double flux_diff = -D * (n_R - n_L) / dx;
+    
+    return flux_adv + flux_diff;
 }
 
 } // namespace HydroPlas
