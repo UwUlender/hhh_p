@@ -31,9 +31,14 @@ int main(int argc, char **argv) {
         
         PetscPrintf(PETSC_COMM_WORLD, "Initializing Chemistry...\n");
         Chemistry chemistry(config);
+
+        PetscPrintf(PETSC_COMM_WORLD, "Initializing Boundary...\n");
+        BoundaryConfig b_conf;
+        b_conf.electrodes = config.electrodes;
+        BoundaryManager boundary(b_conf);
         
         PetscPrintf(PETSC_COMM_WORLD, "Initializing Solver...\n");
-        PlasmaSolver solver(grid, chemistry, config);
+        PlasmaSolver solver(grid, chemistry, boundary, config);
         solver.initialize(); 
         
         PetscPrintf(PETSC_COMM_WORLD, "Initializing Output...\n");
@@ -41,10 +46,25 @@ int main(int argc, char **argv) {
         output.write_mesh();
         
         double t = 0.0;
+        int step = 0;
+        
+        // Restart Logic
+        char restart_file[256] = "";
+        PetscBool has_restart;
+        PetscOptionsGetString(NULL, NULL, "-restart", restart_file, sizeof(restart_file), &has_restart);
+        if (has_restart) {
+             PetscPrintf(PETSC_COMM_WORLD, "Restarting from %s...\n", restart_file);
+             int r_step = 0;
+             PetscOptionsGetInt(NULL, NULL, "-restart_step", &r_step, NULL);
+             output.read_state(restart_file, r_step, solver.get_solution());
+             step = r_step;
+             // t should be read from file too. 
+             // For now assume t is updated or manual.
+        }
+        
         double dt = 1e-12; 
         double t_end = 1e-9; 
         
-        int step = 0;
         int output_freq = (config.output.frequency_step > 0) ? config.output.frequency_step : 100;
         
         PetscPrintf(PETSC_COMM_WORLD, "Starting Simulation...\n");
@@ -58,6 +78,9 @@ int main(int argc, char **argv) {
             if (step % output_freq == 0) {
                  PetscPrintf(PETSC_COMM_WORLD, "Step %d, Time %g\n", step, t);
                  output.write_state(t, step, solver.get_solution(), chemistry.get_num_species());
+                 if (config.output.save_rates) {
+                     solver.save_rates(output, step);
+                 }
             }
         }
         

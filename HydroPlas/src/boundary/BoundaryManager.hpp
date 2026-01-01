@@ -3,8 +3,24 @@
 #include <petsc.h>
 #include <string>
 #include <map>
+#include <vector>
 
 namespace HydroPlas {
+
+// Must match usage in BoundaryManager.cpp
+struct BoundaryConfig {
+    bool use_multi_electrode = true;
+    std::vector<ElectrodeConfig> electrodes;
+    
+    // Legacy support fields if needed (or we migrate logic)
+    std::string voltage_type = "DC";
+    double voltage_amplitude = 0.0;
+    double frequency = 0.0;
+    double bias = 0.0;
+    double gamma_see = 0.0;
+    double dielectric_permittivity = 1.0;
+    bool is_dielectric = false;
+};
 
 class BoundaryManager {
 public:

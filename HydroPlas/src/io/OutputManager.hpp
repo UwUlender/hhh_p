@@ -15,7 +15,10 @@ public:
 
     void write_mesh();
     void write_state(double time, int step, Vec X, int num_species);
-    // write_rates( ... )
+    void write_rates(int step, const std::vector<std::vector<double>>& rates, int nx, int ny);
+    
+    // Restart capability
+    void read_state(const std::string& filename, int step, Vec X);
 
 private:
     OutputConfig config_;
