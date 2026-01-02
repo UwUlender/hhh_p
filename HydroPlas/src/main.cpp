@@ -48,24 +48,44 @@ int main(int argc, char **argv) {
         double t = 0.0;
         int step = 0;
         
-        // Restart Logic
+        // Restart Logic (command-line overrides config)
         char restart_file[256] = "";
         PetscBool has_restart;
         PetscOptionsGetString(NULL, NULL, "-restart", restart_file, sizeof(restart_file), &has_restart);
-        if (has_restart) {
-             PetscPrintf(PETSC_COMM_WORLD, "Restarting from %s...\n", restart_file);
-             int r_step = 0;
-             PetscOptionsGetInt(NULL, NULL, "-restart_step", &r_step, NULL);
-             output.read_state(restart_file, r_step, solver.get_solution());
-             step = r_step;
+        
+        bool should_restart = has_restart || config.restart.enabled;
+        std::string restart_filename = has_restart ? std::string(restart_file) : config.restart.file;
+        int restart_step = config.restart.step;
+        
+        if (should_restart) {
+             PetscPrintf(PETSC_COMM_WORLD, "Restarting from %s...\n", restart_filename.c_str());
+             PetscOptionsGetInt(NULL, NULL, "-restart_step", &restart_step, NULL);
+             output.read_state(restart_filename, restart_step, solver.get_solution());
+             step = restart_step;
              // t should be read from file too. 
              // For now assume t is updated or manual.
         }
         
-        double dt = 1e-12; 
-        double t_end = 1e-9; 
+        // Use solver parameters from config
+        double dt = config.solver.time_step;
+        double t_end = config.solver.end_time;
+        
+        // Allow command-line override of time parameters
+        PetscReal dt_override, tend_override;
+        PetscBool dt_set, tend_set;
+        PetscOptionsGetReal(NULL, NULL, "-dt", &dt_override, &dt_set);
+        PetscOptionsGetReal(NULL, NULL, "-tend", &tend_override, &tend_set);
+        if (dt_set) dt = dt_override;
+        if (tend_set) t_end = tend_override;
         
         int output_freq = (config.output.frequency_step > 0) ? config.output.frequency_step : 100;
+        
+        PetscPrintf(PETSC_COMM_WORLD, "Solver Configuration:\n");
+        PetscPrintf(PETSC_COMM_WORLD, "  Type: %s\n", config.solver.type.c_str());
+        PetscPrintf(PETSC_COMM_WORLD, "  Time step: %g s\n", dt);
+        PetscPrintf(PETSC_COMM_WORLD, "  End time: %g s\n", t_end);
+        PetscPrintf(PETSC_COMM_WORLD, "  Tolerance: %g\n", config.solver.tolerance);
+        PetscPrintf(PETSC_COMM_WORLD, "  Max iterations: %d\n", config.solver.max_iterations);
         
         PetscPrintf(PETSC_COMM_WORLD, "Starting Simulation...\n");
         
