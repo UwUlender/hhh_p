@@ -26,6 +26,9 @@ public:
     // For neutral: returns constant D, mobility=0
     // Returns: mobility (m2/V/s), diffusion (m2/s)
     void get_transport(double mean_energy, double& mu, double& D) const;
+
+    // Config values
+    double mobility_coeff_const = 0.0;
 };
 
 class Chemistry; // Forward

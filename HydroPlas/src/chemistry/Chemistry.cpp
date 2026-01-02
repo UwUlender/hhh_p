@@ -38,6 +38,21 @@ void Chemistry::parse_reactions(const std::vector<ReactionConfig>& r_configs) {
             r.has_rate_table = true;
         }
         
+        // Parse equation if specified
+        if (rc.rate_type == "equation" && !rc.rate_equation.empty()) {
+            r.has_equation = true;
+            r.evaluator.parse(rc.rate_equation);
+            
+            // Parse constants
+            std::stringstream ss_names(rc.equation_constants);
+            std::stringstream ss_vals(rc.equation_values);
+            std::string name;
+            double val;
+            while(ss_names >> name && ss_vals >> val) {
+                r.evaluator.set_constant(name, val);
+            }
+        }
+        
         parse_equation(r, rc.equation);
         reactions_.push_back(r);
     }
@@ -82,7 +97,7 @@ void Chemistry::parse_equation(Reaction& rxn, const std::string& eq) {
     }
 }
 
-double Reaction::get_rate_coeff(double mean_energy, double T_gas) const {
+double Reaction::get_rate_coeff(double mean_energy, double T_gas, const std::map<std::string, double>& vars) const {
     if (type == "constant") {
         return k_const;
     } else if (type == "arrhenius") {
@@ -92,6 +107,14 @@ double Reaction::get_rate_coeff(double mean_energy, double T_gas) const {
             return rate_table.get_rate(mean_energy);
         }
         return 0.0;
+    } else if (type == "equation") {
+        if (has_equation) {
+            // Add Tgas if not present? The equation parser uses variables provided.
+            std::map<std::string, double> v = vars;
+            v["Tgas"] = T_gas;
+            v["mean_energy"] = mean_energy;
+            return evaluator.evaluate(v);
+        }
     }
     return 0.0;
 }
@@ -99,18 +122,69 @@ double Reaction::get_rate_coeff(double mean_energy, double T_gas) const {
 void Chemistry::compute_source(const std::vector<double>& densities, double mean_energy, double T_gas, std::vector<double>& sources) const {
     sources.assign(species_.size(), 0.0);
     
+    // Construct variable map for equations once per cell
+    // This is overhead but necessary for generic equation support
+    std::map<std::string, double> vars;
+    bool needs_vars = false;
+    for(const auto& r : reactions_) {
+        if(r.type == "equation") { needs_vars = true; break; }
+    }
+    
+    if(needs_vars) {
+        for(size_t i=0; i<species_.size(); ++i) {
+            vars[species_[i].name + "_density"] = densities[i];
+             // Also support just name?
+            vars[species_[i].name] = densities[i];
+        }
+    }
+    
     for (const auto& r : reactions_) {
-        double k = r.get_rate_coeff(mean_energy, T_gas);
+        double k = r.get_rate_coeff(mean_energy, T_gas, vars);
         
-        // Calculate rate of reaction R = k * prod(n_reactants)
-        double R_rate = k;
-        for (const auto& pair : r.reactants) {
-            int idx = pair.first;
-            int stoich = pair.second;
-            R_rate *= std::pow(densities[idx], stoich);
+        // Calculate rate of reaction R
+        double R_rate = 0.0;
+        
+        if (r.type == "equation") {
+             // For equation type, we assume the equation returns the FULL Rate (R) 
+             // OR the rate coefficient (k).
+             // Standard practice: if equation uses density, it likely returns R directly 
+             // (e.g. radiation).
+             // However, if the user defines "Ar1s3 -> Ar1s5", usually we multiply by [Ar1s3].
+             // BUT if the equation *already* contains [Ar1s5] (which is product/trapping?),
+             // it might be the net rate.
+             // Given the complexity of the equation, let's assume it returns the NET rate.
+             // Wait, if it returns k, then R = k * [Reactants].
+             // If the equation returns a value ~ 1e7, it looks like a rate coefficient (1/s for first order).
+             // If it returns ~ 1e20, it's a rate.
+             // Looking at the equation: 1.89e7 is in there. 
+             // Let's assume the equation returns 'k' (coefficient) effectively, 
+             // OR it returns the source term.
+             // The config says "rate_type: equation".
+             // If I treat it as 'k', I multiply by reactants.
+             // If the equation calculates the effective Einstein A coefficient (radiative decay rate),
+             // then R = A_eff * [Ar1s3].
+             // The equation provided depends on [Ar1s5] (trapping factor?).
+             // I will assume it returns the COEFFICIENT (1/s or m3/s).
+             // Because for "radia1", the reaction is Ar1s3 -> Ar1s5.
+             // So R = k * [Ar1s3].
+             
+             R_rate = k;
+             // Multiply by reactants stoichiometry
+             for (const auto& pair : r.reactants) {
+                 int idx = pair.first;
+                 int stoich = pair.second;
+                 R_rate *= std::pow(densities[idx], stoich);
+             }
+        } else {
+             R_rate = k;
+             for (const auto& pair : r.reactants) {
+                 int idx = pair.first;
+                 int stoich = pair.second;
+                 R_rate *= std::pow(densities[idx], stoich);
+             }
         }
         
-        // Update sources for all participants
+        // Update sources...
         // S_k += (nu_R - nu_L) * R_rate
         for (const auto& pair : r.reactants) {
             int idx = pair.first;

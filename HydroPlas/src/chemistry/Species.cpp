@@ -11,6 +11,7 @@ Species::Species(const SpeciesConfig& config) {
     charge = config.charge;
     mass = config.mass;
     diffusion_coeff_const = config.diffusion_coeff;
+    mobility_coeff_const = config.mobility_coeff;
 
     if (!config.mobility_file.empty()) {
         lookup_table.load(config.mobility_file);
@@ -27,11 +28,11 @@ void Species::get_transport(double mean_energy, double& mu, double& D) const {
             mu = lookup_table.get_mobility(mean_energy);
             D = lookup_table.get_diffusion(mean_energy);
         } else {
-            // Fallback or constant approximations
-            // E.g. Einstein relation if D is not in table?
-            // For now, assume table handles it or 0.
-            mu = 0.0; 
-            D = 0.0;
+            // Use constant mobility if provided
+            mu = mobility_coeff_const;
+            // Use Einstein relation if D is 0? Or just use constant D.
+            // Config has diffusion_coeff.
+            D = diffusion_coeff_const;
         }
     }
 }
