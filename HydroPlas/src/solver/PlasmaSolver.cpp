@@ -73,14 +73,20 @@ void PlasmaSolver::setup_solver() {
     MatDestroy(&J);
     
     // Configure JFNK and Preconditioner
-    // Use Block Jacobi or FieldSplit if possible, but for custom P we might use standard PC
     KSP ksp;
     SNESGetKSP(snes_, &ksp);
-    KSPSetType(ksp, KSPGMRES);
+    
+    // Set KSP type from config
+    KSPSetType(ksp, config_.solver.ksp_type.c_str());
+    
+    // Set PC type from config
     PC pc;
     KSPGetPC(ksp, &pc);
-    // PCSetType(pc, PCLU); // Direct solve for preconditioner matrix (if small enough)
-    // Or PCILU
+    PCSetType(pc, config_.solver.preconditioner.c_str());
+    
+    // Set tolerances
+    SNESSetTolerances(snes_, config_.solver.tolerance, PETSC_DEFAULT, PETSC_DEFAULT, 
+                      config_.solver.max_iterations, PETSC_DEFAULT);
     
     SNESSetFromOptions(snes_);
 }
@@ -245,7 +251,14 @@ PetscErrorCode FormFunction(SNES snes, Vec X, Vec F, void* ctx_void) {
             
             // Gather densities
             std::vector<double> densities(num_species);
-            for (int k=0; k<num_species; ++k) densities[k] = x[j][i][k];
+            double density_floor = ctx->config->advanced.density_floor;
+            
+            for (int k=0; k<num_species; ++k) {
+                // Apply floor for physics calculations (rates, transport)
+                // But use actual x for time derivatives
+                densities[k] = std::max(x[j][i][k], density_floor);
+            }
+            
             double n_e = 0.0;
             // Find electron
             const auto& species = chem->get_species();
@@ -256,9 +269,10 @@ PetscErrorCode FormFunction(SNES snes, Vec X, Vec F, void* ctx_void) {
                 }
             }
             double n_eps = x[j][i][idx_eps];
-            double mean_en = (n_e > 1e6) ? n_eps / n_e : 0.0;
-            // Cap mean energy
-            mean_en = std::max(0.0, std::min(mean_en, 100.0));
+            // Apply energy floor
+            double energy_floor = ctx->config->advanced.energy_floor;
+            double mean_en = (n_e > density_floor) ? n_eps / n_e : 0.0;
+            mean_en = std::max(energy_floor, std::min(mean_en, 100.0));
             
             std::vector<double> sources;
             chem->compute_source(densities, mean_en, ctx->config->plasma.background_temp, sources);
@@ -420,13 +434,34 @@ PetscErrorCode FormFunction(SNES snes, Vec X, Vec F, void* ctx_void) {
     if (xs == 0) {
         for (int j=ys; j<ys+ym; ++j) {
              double t = ctx->time;
-             double V = boundary->get_electrode_voltage("Left", t);
+             
+             // Find electrode at x_min
+             std::string elec_name = "";
+             bool found = false;
+             for(const auto& e : ctx->config->electrodes) {
+                 if (e.location == "x_min" || e.location == "left" || e.location == "Left") {
+                     elec_name = e.name;
+                     found = true;
+                     break;
+                 }
+             }
+
+             double V = 0.0;
+             double gamma_see = 0.0;
+             if (found) {
+                 try {
+                    V = boundary->get_electrode_voltage(elec_name, t);
+                    gamma_see = boundary->get_electrode_gamma_see(elec_name);
+                 } catch(...) {
+                    // Fallback
+                 }
+             }
+             
              // Hard Dirichlet: f = phi - V
              // Overwrite residual
              f[j][0][idx_phi] = x[j][0][idx_phi] - V;
              
              // Species BC at Wall with SEE
-             double gamma_see = boundary->get_electrode_gamma_see("Left");
              const auto& species = chem->get_species();
              
              // Calculate ion flux to wall (sum of all positive ions)
@@ -461,17 +496,54 @@ PetscErrorCode FormFunction(SNES snes, Vec X, Vec F, void* ctx_void) {
                      f[j][0][k] = x[j][0][k]; // Enforce n = 0
                  }
              }
+             
+             // Apply Wall Quenching for Neutrals
+             double prob = ctx->config->advanced.wall_quenching_probability;
+             if (prob > 0.0) {
+                 for (int k=0; k<num_species; ++k) {
+                     if (species[k].type == SpeciesType::Neutral) {
+                         double n_wall = x[j][0][k];
+                         double m = species[k].mass;
+                         double T = ctx->config->plasma.background_temp;
+                         // Thermal velocity
+                         double v_th = std::sqrt(8.0 * 1.380649e-23 * T / (3.14159265359 * m));
+                         double gamma = 0.25 * n_wall * v_th * prob;
+                         
+                         double area = grid->get_face_area_x(0, j);
+                         // Flux leaving domain adds to residual (loss)
+                         f[j][0][k] += gamma * area;
+                     }
+                 }
+             }
         }
     }
     // Similar for Right Wall (nx-1)
     if (xs + xm == nx) {
         for (int j=ys; j<ys+ym; ++j) {
              double t = ctx->time;
-             double V = boundary->get_electrode_voltage("Right", t);
+             
+             std::string elec_name = "";
+             bool found = false;
+             for(const auto& e : ctx->config->electrodes) {
+                 if (e.location == "x_max" || e.location == "right" || e.location == "Right") {
+                     elec_name = e.name;
+                     found = true;
+                     break;
+                 }
+             }
+
+             double V = 0.0;
+             double gamma_see = 0.0;
+             if (found) {
+                 try {
+                    V = boundary->get_electrode_voltage(elec_name, t);
+                    gamma_see = boundary->get_electrode_gamma_see(elec_name);
+                 } catch(...) {}
+             }
+             
              f[j][nx-1][idx_phi] = x[j][nx-1][idx_phi] - V;
              
              // Species BC with SEE
-             double gamma_see = boundary->get_electrode_gamma_see("Right");
              const auto& species = chem->get_species();
              
              double ion_flux = 0.0;
@@ -499,6 +571,22 @@ PetscErrorCode FormFunction(SNES snes, Vec X, Vec F, void* ctx_void) {
              for (int k=0; k<num_species; ++k) {
                  if (species[k].charge > 0) {
                      f[j][nx-1][k] = x[j][nx-1][k];
+                 }
+             }
+             
+             double prob = ctx->config->advanced.wall_quenching_probability;
+             if (prob > 0.0) {
+                 for (int k=0; k<num_species; ++k) {
+                     if (species[k].type == SpeciesType::Neutral) {
+                         double n_wall = x[j][nx-1][k];
+                         double m = species[k].mass;
+                         double T = ctx->config->plasma.background_temp;
+                         double v_th = std::sqrt(8.0 * 1.380649e-23 * T / (3.14159265359 * m));
+                         double gamma = 0.25 * n_wall * v_th * prob;
+                         
+                         double area = grid->get_face_area_x(nx-1, j);
+                         f[j][nx-1][k] += gamma * area;
+                     }
                  }
              }
         }

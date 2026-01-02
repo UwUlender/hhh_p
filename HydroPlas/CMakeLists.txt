@@ -41,6 +41,7 @@ set(SOURCES
     src/chemistry/LookupTable.cpp
     src/io/OutputManager.cpp
     src/boundary/BoundaryManager.cpp
+    src/numerics/EquationEvaluator.cpp
 )
 
 add_executable(HydroPlas ${SOURCES})

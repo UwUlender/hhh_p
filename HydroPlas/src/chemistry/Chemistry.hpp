@@ -4,6 +4,7 @@
 #include <map>
 #include "Species.hpp"
 #include "../config/ConfigParser.hpp"
+#include "../numerics/EquationEvaluator.hpp"
 
 namespace HydroPlas {
 
@@ -14,7 +15,7 @@ struct Reaction {
     std::map<int, int> products;
     
     // Rate parameters
-    std::string type; // "constant", "arrhenius", "table"
+    std::string type; // "constant", "arrhenius", "table", "equation"
     double k_const;
     double A, b, E_a;
     
@@ -22,8 +23,13 @@ struct Reaction {
     LookupTable rate_table;
     bool has_rate_table = false;
     
+    // Equation based rate
+    EquationEvaluator evaluator;
+    bool has_equation = false;
+    
     // Helper to calculate rate coefficient
-    double get_rate_coeff(double mean_energy, double T_gas) const;
+    // Updated to accept variable map for equation types
+    double get_rate_coeff(double mean_energy, double T_gas, const std::map<std::string, double>& vars = {}) const;
 };
 
 class Chemistry {
