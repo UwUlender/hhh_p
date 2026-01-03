@@ -226,21 +226,20 @@ PetscErrorCode FormFunction(SNES snes, Vec X, Vec F, void* ctx_void) {
     DM dm = grid->get_dm();
     PetscErrorCode ierr;
     
-    Vec Xloc;
+    Vec Xloc, Xprev_loc;
     ierr = DMGetLocalVector(dm, &Xloc); CHKERRQ(ierr);
     ierr = DMGlobalToLocalBegin(dm, X, INSERT_VALUES, Xloc); CHKERRQ(ierr);
     ierr = DMGlobalToLocalEnd(dm, X, INSERT_VALUES, Xloc); CHKERRQ(ierr);
     
+    // Get local vector for X_prev (needed for time derivatives)
+    ierr = DMGetLocalVector(dm, &Xprev_loc); CHKERRQ(ierr);
+    ierr = DMGlobalToLocalBegin(dm, ctx->X_prev, INSERT_VALUES, Xprev_loc); CHKERRQ(ierr);
+    ierr = DMGlobalToLocalEnd(dm, ctx->X_prev, INSERT_VALUES, Xprev_loc); CHKERRQ(ierr);
+    
     // Access arrays
     PetscScalar ***x, ***x_prev, ***f;
     ierr = DMDAVecGetArrayDOF(dm, Xloc, &x); CHKERRQ(ierr);
-    ierr = DMDAVecGetArrayDOF(dm, ctx->X_prev, &x_prev); CHKERRQ(ierr); // X_prev is global, but we need local part...
-    // X_prev is stored as global vector. To get ghost values, we need a local version too.
-    // For time term (x - x_prev)/dt, we only need local values (no gradients of x_prev).
-    // So DMDAVecGetArrayDOF on global X_prev works for local part.
-    // Wait, DMDAVecGetArrayDOF on global vector gives access to local portion. 
-    // Ghosts are invalid unless we scatter. But we don't need ghosts of x_prev for time term.
-    
+    ierr = DMDAVecGetArrayDOF(dm, Xprev_loc, &x_prev); CHKERRQ(ierr);
     ierr = DMDAVecGetArrayDOF(dm, F, &f); CHKERRQ(ierr);
     
     int xs, ys, xm, ym;
@@ -316,133 +315,96 @@ PetscErrorCode FormFunction(SNES snes, Vec X, Vec F, void* ctx_void) {
         }
     }
     
-    // --- 2. Fluxes (X) ---
-    for (int j=ys; j<ys+ym; ++j) {
-        for (int i=xs; i<xs+xm+1; ++i) { // Interfaces
-            // Skip boundaries for now (handled separately or implicitly via ghost values which are BCs)
-            // We iterate interfaces i=0 to nx. 
-            // i corresponds to face between i-1 and i.
-            // Wait, DMDA bounds xs..xs+xm are CELLS. 
-            // Faces are i and i+1 for cell i.
-            // We loop cells and add Flux_Right to i, subtract Flux_Right from i+1.
-            // But this requires access to i+1 which might be remote.
-            // Better: Compute flux at i+1/2 (Right face of cell i).
-            // Add to f[j][i] (+Flux) and f[j][i+1] (-Flux). 
-            // Caution with parallel: Only update OWNED cells.
-            
-            if (i >= nx) continue; // Boundary right handled differently?
-            
-            // Indices for Left and Right cells of face i+1/2
-            int iL = i;
-            int iR = i+1;
-            
-            // Get Geometry
-            double dx = grid->get_dx_face(i);
-            double area = grid->get_face_area_x(i, j);
-            
-            // Variables
-            double phi_L = x[j][iL][idx_phi];
-            double phi_R = x[j][iR][idx_phi];
-            double dphi = phi_R - phi_L;
-            double E_field = -dphi / dx;
-            
-            // Species Fluxes
-            const auto& species = chem->get_species();
-            for (int k=0; k<num_species; ++k) {
-                const auto& sp = species[k];
-                double n_L = x[j][iL][k];
-                double n_R = x[j][iR][k];
-                
-                double flux = 0.0;
-                
-                if (sp.type == SpeciesType::Neutral) {
-                     flux = compute_neutral_flux(n_L, n_R, sp.diffusion_coeff_const, 0.0, dx);
-                } else {
-                     // Charged
-                     double mean_en = 0.0; // Should interpolate mean energy at interface
-                     // Simple average
-                     double ne_L = 1.0, ne_R = 1.0, eps_L = 0.0, eps_R = 0.0; 
-                     // Need to find electron index again or cache it
-                     // Assuming k=0 is electron for energy lookup (simplified)
-                     // Proper way: pass mean_energy to get_transport
-                     double mu, D;
-                     sp.get_transport(2.0, mu, D); // Placeholder Energy 2.0eV
-                     
-                     // Charge sign for mobility direction
-                     double signed_mu = mu * (sp.charge > 0 ? 1.0 : -1.0);
-                     flux = compute_sg_flux(n_L, n_R, D, signed_mu, dphi, dx);
-                }
-                
-                // Add to residuals
-                // Net Flux out of cell i = Flux_R - Flux_L
-                // f[i] += Flux_R * Area
-                // f[i+1] -= Flux_R * Area
-                
-                // Note: In PETSc DMDA, we usually only update f[j][i] (owned).
-                // But Flux(i+1/2) affects i (leaving) and i+1 (entering).
-                // We add contribution to i. 
-                // We rely on neighbor i+1 to compute Flux(i+1/2) as its Flux_L and subtract it?
-                // Yes, consistent flux calculation.
-                // Flux_R(i) = Flux(i+1/2). Contribution: +Flux_R(i) * Area.
-                
-                // Wait. Divergence term is Div(Flux). In FV: Sum(Flux_out * Area).
-                // So for cell i: +Flux_Right*Area_R - Flux_Left*Area_L.
-                
-                f[j][iL][k] += flux * area;
-                if (iR < xs+xm) { // If iR is also local (or ghost reachable but we don't write to ghost F)
-                    // We shouldn't write to ghost F.
-                    // Actually, just update iL. The neighbor will update itself using Flux_Left which is this Flux.
-                    // BUT we must ensure Flux_Left(i+1) == Flux_Right(i).
-                    // So we compute Flux at i+1/2 and add to i.
-                    // And we compute Flux at i-1/2 and subtract from i.
-                }
-            }
-        }
-    }
-    
-    // RE-LOOP for Divergence to avoid double counting or ghost issues
-    // Loop over cells i,j
+    // --- 2. Fluxes (X) and Poisson Equation ---
+    // Loop over cells and compute divergence of fluxes
     for (int j=ys; j<ys+ym; ++j) {
         for (int i=xs; i<xs+xm; ++i) {
-             // 1. Right Face (i+1/2)
-             // ... Compute Flux_R ...
-             // f[j][i] += Flux_R * Area_R
-             
-             // 2. Left Face (i-1/2)
-             // ... Compute Flux_L ...
-             // f[j][i] -= Flux_L * Area_L
-             
-             // This requires computing flux twice per face or caching. 
-             // Computing twice is fine for now.
-             
-             // POISSON: -Div(eps Grad phi) = rho
-             // - [ eps*(phi_R-phi_C)/dx_R * A_R - eps*(phi_C-phi_L)/dx_L * A_L ] = rho * Vol
-             // Residual: -Flux_Phi_Net - rho*Vol
-             
-             // Get Rho
-             double rho = 0.0;
-             const auto& species = chem->get_species();
-             for (int k=0; k<num_species; ++k) {
-                 rho += x[j][i][k] * species[k].charge * q_e;
-             }
-             
-             // Calculate Phi Fluxes
-             // Right
-             double phi_C = x[j][i][idx_phi];
-             double phi_R = x[j][i+1][idx_phi]; // Ghost
-             double dx_R = grid->get_dx_face(i);
-             double flux_phi_R = epsilon_0 * (phi_R - phi_C) / dx_R;
-             
-             // Left
-             double phi_L = x[j][i-1][idx_phi]; // Ghost
-             double dx_L = grid->get_dx_face(i-1);
-             double flux_phi_L = epsilon_0 * (phi_C - phi_L) / dx_L;
-             
-             double div_phi = (flux_phi_R * grid->get_face_area_x(i, j) - flux_phi_L * grid->get_face_area_x(i-1, j));
-             double vol = grid->get_cell_volume(i, j);
-             
-             f[j][i][idx_phi] -= div_phi;
-             f[j][i][idx_phi] -= rho * vol;
+            // Species Fluxes - compute divergence for each cell
+            const auto& species = chem->get_species();
+            
+            for (int k=0; k<num_species; ++k) {
+                const auto& sp = species[k];
+                double flux_right = 0.0;
+                double flux_left = 0.0;
+                
+                // Right face flux (i+1/2) - only if not at domain boundary
+                if (i < nx - 1) {
+                    double n_L = x[j][i][k];
+                    double n_R = x[j][i+1][k];
+                    double phi_L = x[j][i][idx_phi];
+                    double phi_R = x[j][i+1][idx_phi];
+                    double dphi = phi_R - phi_L;
+                    double dx_face = grid->get_dx_face(i);
+                    
+                    if (sp.type == SpeciesType::Neutral) {
+                        flux_right = compute_neutral_flux(n_L, n_R, sp.diffusion_coeff_const, 0.0, dx_face);
+                    } else {
+                        // Charged species
+                        double mu, D;
+                        sp.get_transport(2.0, mu, D); // Placeholder energy
+                        double signed_mu = mu * (sp.charge > 0 ? 1.0 : -1.0);
+                        flux_right = compute_sg_flux(n_L, n_R, D, signed_mu, dphi, dx_face);
+                    }
+                }
+                
+                // Left face flux (i-1/2) - only if not at domain boundary
+                if (i > 0) {
+                    double n_L = x[j][i-1][k];
+                    double n_R = x[j][i][k];
+                    double phi_L = x[j][i-1][idx_phi];
+                    double phi_R = x[j][i][idx_phi];
+                    double dphi = phi_R - phi_L;
+                    double dx_face = grid->get_dx_face(i-1);
+                    
+                    if (sp.type == SpeciesType::Neutral) {
+                        flux_left = compute_neutral_flux(n_L, n_R, sp.diffusion_coeff_const, 0.0, dx_face);
+                    } else {
+                        // Charged species
+                        double mu, D;
+                        sp.get_transport(2.0, mu, D); // Placeholder energy
+                        double signed_mu = mu * (sp.charge > 0 ? 1.0 : -1.0);
+                        flux_left = compute_sg_flux(n_L, n_R, D, signed_mu, dphi, dx_face);
+                    }
+                }
+                
+                // Net divergence: (Flux_right - Flux_left) * Area
+                double area = grid->get_face_area_x(i, j);
+                f[j][i][k] += (flux_right - flux_left) * area;
+            }
+            
+            // --- POISSON EQUATION: -Div(eps Grad phi) = rho ---
+            // Get charge density
+            double rho = 0.0;
+            for (int k=0; k<num_species; ++k) {
+                rho += x[j][i][k] * species[k].charge * q_e;
+            }
+            
+            // Calculate Phi Fluxes
+            double phi_C = x[j][i][idx_phi];
+            
+            // Right face flux
+            double flux_phi_R = 0.0;
+            if (i < nx - 1) {
+                double phi_R = x[j][i+1][idx_phi];
+                double dx_R = grid->get_dx_face(i);
+                flux_phi_R = epsilon_0 * (phi_R - phi_C) / dx_R;
+            }
+            
+            // Left face flux
+            double flux_phi_L = 0.0;
+            if (i > 0) {
+                double phi_L = x[j][i-1][idx_phi];
+                double dx_L = grid->get_dx_face(i-1);
+                flux_phi_L = epsilon_0 * (phi_C - phi_L) / dx_L;
+            }
+            
+            double area_R = (i < nx - 1) ? grid->get_face_area_x(i, j) : 0.0;
+            double area_L = (i > 0) ? grid->get_face_area_x(i-1, j) : 0.0;
+            double div_phi = flux_phi_R * area_R - flux_phi_L * area_L;
+            double vol = grid->get_cell_volume(i, j);
+            
+            f[j][i][idx_phi] -= div_phi;
+            f[j][i][idx_phi] -= rho * vol;
         }
     }
     
@@ -612,9 +574,10 @@ PetscErrorCode FormFunction(SNES snes, Vec X, Vec F, void* ctx_void) {
     }
 
     ierr = DMDAVecRestoreArrayDOF(dm, Xloc, &x); CHKERRQ(ierr);
-    ierr = DMDAVecRestoreArrayDOF(dm, ctx->X_prev, &x_prev); CHKERRQ(ierr);
+    ierr = DMDAVecRestoreArrayDOF(dm, Xprev_loc, &x_prev); CHKERRQ(ierr);
     ierr = DMDAVecRestoreArrayDOF(dm, F, &f); CHKERRQ(ierr);
     ierr = DMRestoreLocalVector(dm, &Xloc); CHKERRQ(ierr);
+    ierr = DMRestoreLocalVector(dm, &Xprev_loc); CHKERRQ(ierr);
     
     return 0;
 }
