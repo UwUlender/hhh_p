@@ -1,4 +1,6 @@
 #include "Species.hpp"
+#include <stdexcept>
+#include <iostream>
 
 namespace HydroPlas {
 
@@ -14,7 +16,9 @@ Species::Species(const SpeciesConfig& config) {
     mobility_coeff_const = config.mobility_coeff;
 
     if (!config.mobility_file.empty()) {
-        lookup_table.load(config.mobility_file);
+        if (!lookup_table.load(config.mobility_file)) {
+            throw std::runtime_error("Failed to load mobility file: " + config.mobility_file);
+        }
         has_lookup = true;
     }
 }

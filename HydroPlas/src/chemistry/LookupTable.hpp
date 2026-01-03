@@ -10,10 +10,12 @@ public:
     
     // Load from BOLSIG+ text file
     // Expects specific column mapping
-    void load(const std::string& filename);
+    bool load(const std::string& filename);
     
     // Load single-column rate data (Energy, Rate)
-    void load_rate(const std::string& filename);
+    bool load_rate(const std::string& filename);
+
+    bool is_empty() const { return energy_grid_.empty(); }
 
     // Interpolate values based on Mean Energy (epsilon)
     // Returns: mobility, diffusion, temperature(if needed)

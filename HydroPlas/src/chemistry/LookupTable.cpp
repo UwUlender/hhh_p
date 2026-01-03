@@ -7,9 +7,9 @@
 
 namespace HydroPlas {
 
-void LookupTable::load(const std::string& filename) {
+bool LookupTable::load(const std::string& filename) {
     std::ifstream fin(filename);
-    if (!fin.is_open()) return; // Warning log?
+    if (!fin.is_open()) return false;
 
     // Generic simple parser for 2-column or multicolumn
     // Assuming: Energy | Mobility | Diffusion
@@ -34,13 +34,14 @@ void LookupTable::load(const std::string& filename) {
             diffusion_data_.push_back(d);
         }
     }
+    return !energy_grid_.empty();
 }
 
-void LookupTable::load_rate(const std::string& filename) {
+bool LookupTable::load_rate(const std::string& filename) {
     std::ifstream fin(filename);
     if (!fin.is_open()) {
         std::cerr << "Warning: Cannot open rate table file: " << filename << std::endl;
-        return;
+        return false;
     }
 
     // Format: Energy | Rate
@@ -66,7 +67,9 @@ void LookupTable::load_rate(const std::string& filename) {
     
     if (energy_grid_.empty()) {
         std::cerr << "Warning: No data loaded from rate table: " << filename << std::endl;
+        return false;
     }
+    return true;
 }
 
 double LookupTable::interpolate(const std::vector<double>& x, const std::vector<double>& y, double val) const {
