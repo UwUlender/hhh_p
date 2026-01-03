@@ -317,84 +317,72 @@ PetscErrorCode FormFunction(SNES snes, Vec X, Vec F, void* ctx_void) {
     }
     
     // --- 2. Fluxes (X) ---
+    // Corrected Gather Loop to avoid out-of-bounds access and ensure conservation
     for (int j=ys; j<ys+ym; ++j) {
-        for (int i=xs; i<xs+xm+1; ++i) { // Interfaces
-            // Skip boundaries for now (handled separately or implicitly via ghost values which are BCs)
-            // We iterate interfaces i=0 to nx. 
-            // i corresponds to face between i-1 and i.
-            // Wait, DMDA bounds xs..xs+xm are CELLS. 
-            // Faces are i and i+1 for cell i.
-            // We loop cells and add Flux_Right to i, subtract Flux_Right from i+1.
-            // But this requires access to i+1 which might be remote.
-            // Better: Compute flux at i+1/2 (Right face of cell i).
-            // Add to f[j][i] (+Flux) and f[j][i+1] (-Flux). 
-            // Caution with parallel: Only update OWNED cells.
-            
-            if (i >= nx) continue; // Boundary right handled differently?
-            
-            // Indices for Left and Right cells of face i+1/2
-            int iL = i;
-            int iR = i+1;
-            
-            // Get Geometry
-            double dx = grid->get_dx_face(i);
-            double area = grid->get_face_area_x(i, j);
-            
-            // Variables
-            double phi_L = x[j][iL][idx_phi];
-            double phi_R = x[j][iR][idx_phi];
-            double dphi = phi_R - phi_L;
-            double E_field = -dphi / dx;
-            
-            // Species Fluxes
-            const auto& species = chem->get_species();
-            for (int k=0; k<num_species; ++k) {
-                const auto& sp = species[k];
-                double n_L = x[j][iL][k];
-                double n_R = x[j][iR][k];
+        for (int i=xs; i<xs+xm; ++i) { // Iterate OWNED cells
+            // 1. Right Face (i+1/2): Flux leaving i to i+1
+            if (i < nx - 1) { // Interior or Left boundary
+                int iL = i;
+                int iR = i+1; // Valid ghost or owned
                 
-                double flux = 0.0;
+                double dx = grid->get_dx_face(i);
+                double area = grid->get_face_area_x(i, j);
                 
-                if (sp.type == SpeciesType::Neutral) {
-                     flux = compute_neutral_flux(n_L, n_R, sp.diffusion_coeff_const, 0.0, dx);
-                } else {
-                     // Charged
-                     double mean_en = 0.0; // Should interpolate mean energy at interface
-                     // Simple average
-                     double ne_L = 1.0, ne_R = 1.0, eps_L = 0.0, eps_R = 0.0; 
-                     // Need to find electron index again or cache it
-                     // Assuming k=0 is electron for energy lookup (simplified)
-                     // Proper way: pass mean_energy to get_transport
-                     double mu, D;
-                     sp.get_transport(2.0, mu, D); // Placeholder Energy 2.0eV
-                     
-                     // Charge sign for mobility direction
-                     double signed_mu = mu * (sp.charge > 0 ? 1.0 : -1.0);
-                     flux = compute_sg_flux(n_L, n_R, D, signed_mu, dphi, dx);
+                double phi_L = x[j][iL][idx_phi];
+                double phi_R = x[j][iR][idx_phi];
+                double dphi = phi_R - phi_L;
+                
+                const auto& species = chem->get_species();
+                for (int k=0; k<num_species; ++k) {
+                    const auto& sp = species[k];
+                    double n_L = x[j][iL][k];
+                    double n_R = x[j][iR][k];
+                    
+                    double flux = 0.0;
+                     if (sp.type == SpeciesType::Neutral) {
+                         flux = compute_neutral_flux(n_L, n_R, sp.diffusion_coeff_const, 0.0, dx);
+                    } else {
+                         // Charged
+                         double mu, D;
+                         sp.get_transport(2.0, mu, D); // Placeholder Energy
+                         double signed_mu = mu * (sp.charge > 0 ? 1.0 : -1.0);
+                         flux = compute_sg_flux(n_L, n_R, D, signed_mu, dphi, dx);
+                    }
+                    
+                    f[j][i][k] += flux * area; // Flux leaving i (Outflow)
                 }
+            }
+            
+            // 2. Left Face (i-1/2): Flux entering i from i-1
+            if (i > 0) { // Interior or Right boundary
+                int iL = i-1; // Valid ghost or owned
+                int iR = i;
                 
-                // Add to residuals
-                // Net Flux out of cell i = Flux_R - Flux_L
-                // f[i] += Flux_R * Area
-                // f[i+1] -= Flux_R * Area
+                double dx = grid->get_dx_face(i-1);
+                double area = grid->get_face_area_x(i-1, j);
                 
-                // Note: In PETSc DMDA, we usually only update f[j][i] (owned).
-                // But Flux(i+1/2) affects i (leaving) and i+1 (entering).
-                // We add contribution to i. 
-                // We rely on neighbor i+1 to compute Flux(i+1/2) as its Flux_L and subtract it?
-                // Yes, consistent flux calculation.
-                // Flux_R(i) = Flux(i+1/2). Contribution: +Flux_R(i) * Area.
+                double phi_L = x[j][iL][idx_phi];
+                double phi_R = x[j][iR][idx_phi];
+                double dphi = phi_R - phi_L;
                 
-                // Wait. Divergence term is Div(Flux). In FV: Sum(Flux_out * Area).
-                // So for cell i: +Flux_Right*Area_R - Flux_Left*Area_L.
-                
-                f[j][iL][k] += flux * area;
-                if (iR < xs+xm) { // If iR is also local (or ghost reachable but we don't write to ghost F)
-                    // We shouldn't write to ghost F.
-                    // Actually, just update iL. The neighbor will update itself using Flux_Left which is this Flux.
-                    // BUT we must ensure Flux_Left(i+1) == Flux_Right(i).
-                    // So we compute Flux at i+1/2 and add to i.
-                    // And we compute Flux at i-1/2 and subtract from i.
+                const auto& species = chem->get_species();
+                for (int k=0; k<num_species; ++k) {
+                    const auto& sp = species[k];
+                    double n_L = x[j][iL][k];
+                    double n_R = x[j][iR][k];
+                    
+                    double flux = 0.0;
+                    if (sp.type == SpeciesType::Neutral) {
+                         flux = compute_neutral_flux(n_L, n_R, sp.diffusion_coeff_const, 0.0, dx);
+                    } else {
+                         // Charged
+                         double mu, D;
+                         sp.get_transport(2.0, mu, D);
+                         double signed_mu = mu * (sp.charge > 0 ? 1.0 : -1.0);
+                         flux = compute_sg_flux(n_L, n_R, D, signed_mu, dphi, dx);
+                    }
+                    
+                    f[j][i][k] -= flux * area; // Flux entering i (Inflow) -> Subtract from divergence
                 }
             }
         }
