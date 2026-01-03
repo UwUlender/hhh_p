@@ -226,8 +226,8 @@ void ConfigParser::parse_yaml(const YAML::Node& root) {
         config_.solver.max_iterations = 50;
         config_.solver.time_step = 1.0e-12;
         config_.solver.end_time = 1.0e-9;
-        config_.solver.preconditioner = "PBP";
-        config_.solver.ksp_type = "GMRES";
+        config_.solver.preconditioner = "jacobi";
+        config_.solver.ksp_type = "gmres";
     }
     
     // Output

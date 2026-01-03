@@ -4,6 +4,8 @@
 #include <iostream>
 #include <cmath>
 #include <mpi.h>
+#include <algorithm>
+#include <cctype>
 
 namespace HydroPlas {
 
@@ -77,12 +79,21 @@ void PlasmaSolver::setup_solver() {
     SNESGetKSP(snes_, &ksp);
     
     // Set KSP type from config
-    KSPSetType(ksp, config_.solver.ksp_type.c_str());
+    std::string ksp_type = config_.solver.ksp_type;
+    std::transform(ksp_type.begin(), ksp_type.end(), ksp_type.begin(), [](unsigned char c){ return std::tolower(c); });
+    KSPSetType(ksp, ksp_type.c_str());
     
     // Set PC type from config
     PC pc;
     KSPGetPC(ksp, &pc);
-    PCSetType(pc, config_.solver.preconditioner.c_str());
+    std::string pc_type = config_.solver.preconditioner;
+    std::transform(pc_type.begin(), pc_type.end(), pc_type.begin(), [](unsigned char c){ return std::tolower(c); });
+    
+    if (pc_type == "pbp") {
+        PetscPrintf(PETSC_COMM_WORLD, "Warning: Preconditioner 'PBP' not recognized. Falling back to 'jacobi'.\n");
+        pc_type = "jacobi";
+    }
+    PCSetType(pc, pc_type.c_str());
     
     // Set tolerances
     SNESSetTolerances(snes_, config_.solver.tolerance, PETSC_DEFAULT, PETSC_DEFAULT, 
