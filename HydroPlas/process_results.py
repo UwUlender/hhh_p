@@ -41,6 +41,12 @@ def process_output(filename, output_dir="plots"):
             n_eps = group['n_eps'][0, :]
             phi = group['phi'][0, :]
             
+            # Print Statistics
+            print(f"--- Statistics for Step {last_step} ---")
+            print(f"Electron Density: Min={n_e.min():.4e}, Max={n_e.max():.4e}")
+            print(f"Ion Density:      Min={n_Ar_plus.min():.4e}, Max={n_Ar_plus.max():.4e}")
+            print(f"Potential:        Min={phi.min():.4e}, Max={phi.max():.4e}")
+            
             # Plot Electric Field if available
             if 'electric_field' in group:
                 e_field = group['electric_field'][0, :]
