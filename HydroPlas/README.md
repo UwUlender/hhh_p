@@ -230,7 +230,8 @@ HydroPlas/
 
 - **[Theory Manual](docs/THEORY.md)**: Mathematical derivations, ADR equations, Scharfetter-Gummel scheme, reaction mechanisms
 - **[User Guide](docs/USER_GUIDE.md)**: Configuration files, running simulations, troubleshooting, visualization
-- **[Multi-Electrode Guide](docs/MULTI_ELECTRODE_GUIDE.md)**: ⚡ NEW: Custom voltage boundary conditions for each electrode
+- **[PETSc Solver Guide](docs/PETSC_SOLVER_GUIDE.md)**: ⚡ NEW: Complete guide to solver configuration and valid PETSc types
+- **[Multi-Electrode Guide](docs/MULTI_ELECTRODE_GUIDE.md)**: ⚡ Custom voltage boundary conditions for each electrode
 - **[Multi-Electrode Implementation](MULTI_ELECTRODE_IMPLEMENTATION.md)**: Technical details and migration guide
 - **[Configuration Examples](config/)**: Annotated JSON files for various discharge types
 
@@ -288,6 +289,28 @@ Set `"Ny": 100` in config. Solver automatically handles 2D DMDA. Requires more m
 ---
 
 ## 🐛 Troubleshooting
+
+### PETSc "Unknown Type" Errors
+
+If you see errors like:
+```
+[0]PETSC ERROR: Unable to find requested KSP type GMRES
+[0]PETSC ERROR: Unable to find requested PC type PBP
+```
+
+**Solution:** PETSc type names must be lowercase. Update your configuration:
+```yaml
+solver:
+  ksp_type: gmres        # NOT "GMRES"
+  preconditioner: pbjacobi  # NOT "PBP" (which is invalid)
+```
+
+See **[PETSc Solver Guide](docs/PETSC_SOLVER_GUIDE.md)** for complete details and valid solver types.
+
+**Quick fix:** After pulling the latest changes, rebuild:
+```bash
+./rebuild_fix.sh  # or manually: rm -rf build && mkdir build && cd build && cmake .. && make
+```
 
 ### Convergence Failures
 

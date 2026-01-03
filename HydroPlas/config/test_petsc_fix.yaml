@@ -1,0 +1,78 @@
+# Test Configuration with Correct PETSc Solver Settings
+# This configuration file demonstrates the proper solver configuration
+# to avoid PETSc errors about unknown KSP and PC types.
+
+mesh:
+  type: 1D_rectilinear
+  x_nodes: [0.0, 0.001, 0.005, 0.01]  # Non-uniform mesh (3 cells)
+  y_nodes: [0.0, 1.0]                  # Single cell in y for 1D
+
+electrodes:
+  - name: powered
+    location: x_min
+    voltage_type: DC
+    voltage_amplitude: 300.0
+    frequency: 0.0
+    phase: 0.0
+    bias: 0.0
+    gamma_see: 0.1
+  - name: grounded
+    location: x_max
+    voltage_type: DC
+    voltage_amplitude: 0.0
+    gamma_see: 0.0
+
+plasma:
+  gas_pressure: 100.0      # Pascals
+  background_temp: 300.0   # Kelvin
+  background_gas: Ar
+
+species:
+  - name: e
+    type: electron
+    charge: -1.0
+    mass: 9.1e-31          # kg
+    diffusion_coeff: 0.0
+    mobility_file: "data/transport.dat"
+  - name: Ar+
+    type: ion
+    charge: 1.0
+    mass: 6.6e-26          # kg (Argon ion)
+    diffusion_coeff: 0.0
+    mobility_file: "data/transport.dat"
+
+reactions:
+  - equation: "e + Ar -> 2e + Ar+"
+    type: ionization
+    rate_type: constant
+    a: 1e-14
+    b: 0.0
+    e_a: 0.0
+    table_file: ""
+
+# IMPORTANT: Solver configuration with VALID PETSc types
+solver:
+  type: JFNK                    # Jacobian-Free Newton-Krylov
+  tolerance: 1.0e-6             # SNES convergence tolerance
+  max_iterations: 50            # Maximum nonlinear iterations
+  time_step: 1.0e-12           # Time step size (seconds)
+  end_time: 1.0e-9             # End time (seconds)
+  
+  # CRITICAL: PETSc type names are CASE-SENSITIVE and must be lowercase!
+  ksp_type: gmres              # NOT "GMRES" - must be lowercase
+  
+  # CRITICAL: Must use a valid PETSc preconditioner type
+  # Valid options: pbjacobi, bjacobi, asm, ilu, jacobi, sor, none
+  preconditioner: pbjacobi     # NOT "PBP" - that's not a valid PETSc type
+
+output:
+  format: hdf5
+  frequency_step: 10
+  save_rates: true
+  filename: "test_output.h5"
+
+# Advanced configuration (optional)
+advanced:
+  density_floor: 1.0e6         # Minimum density (1/m³)
+  energy_floor: 0.1            # Minimum electron energy (eV)
+  wall_quenching_probability: 0.0

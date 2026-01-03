@@ -215,10 +215,10 @@ void ConfigParser::parse_yaml(const YAML::Node& root) {
         else config_.solver.end_time = 1.0e-9;
         
         if (root["solver"]["preconditioner"]) config_.solver.preconditioner = root["solver"]["preconditioner"].as<std::string>();
-        else config_.solver.preconditioner = "PBP";
+        else config_.solver.preconditioner = "pbjacobi";
         
         if (root["solver"]["ksp_type"]) config_.solver.ksp_type = root["solver"]["ksp_type"].as<std::string>();
-        else config_.solver.ksp_type = "GMRES";
+        else config_.solver.ksp_type = "gmres";
     } else {
         // Set defaults if solver section is missing
         config_.solver.type = "JFNK";
@@ -226,8 +226,8 @@ void ConfigParser::parse_yaml(const YAML::Node& root) {
         config_.solver.max_iterations = 50;
         config_.solver.time_step = 1.0e-12;
         config_.solver.end_time = 1.0e-9;
-        config_.solver.preconditioner = "PBP";
-        config_.solver.ksp_type = "GMRES";
+        config_.solver.preconditioner = "pbjacobi";
+        config_.solver.ksp_type = "gmres";
     }
     
     // Output

@@ -1,0 +1,169 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                    PETSC CONFIGURATION FIX - QUICK REFERENCE                  ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ PROBLEM: PETSc errors about unknown KSP type "GMRES" and PC type "PBP"      │
+│ SOLUTION: Fixed in source code and configuration files                       │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ FILES CHANGED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Source Code:
+  ✓ src/config/ConfigParser.hpp  - Fixed default values
+  ✓ src/config/ConfigParser.cpp  - Fixed default values (2 locations)
+
+Configuration Files:
+  ✓ config/default_config.yaml           - Added solver section
+  ✓ config/complete_feature_demo.yaml    - Fixed solver section
+  ✓ config/test_petsc_fix.yaml           - New test config (created)
+
+Documentation:
+  ✓ PETSC_SOLVER_FIX.md          - Detailed fix explanation
+  ✓ docs/PETSC_SOLVER_GUIDE.md   - Complete solver configuration guide
+  ✓ PETSC_FIX_SUMMARY.md         - This summary
+  ✓ rebuild_fix.sh               - Automated rebuild script
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ WHAT WAS FIXED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+BEFORE (WRONG):                    AFTER (CORRECT):
+  ksp_type: "GMRES"         →        ksp_type: "gmres"
+  preconditioner: "PBP"     →        preconditioner: "pbjacobi"
+
+KEY POINT: PETSc type names are CASE-SENSITIVE and must be lowercase!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ REBUILD INSTRUCTIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Option 1: Use the automated script
+  $ cd /path/to/HydroPlas
+  $ ./rebuild_fix.sh
+
+Option 2: Manual rebuild
+  $ cd /path/to/HydroPlas
+  $ rm -rf build
+  $ mkdir build && cd build
+  $ cmake ..
+  $ make -j$(nproc)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ TESTING THE FIX
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+After rebuilding, test with:
+
+  $ ./HydroPlas --config config/test_petsc_fix.yaml
+
+or:
+
+  $ ./HydroPlas --config config/default_config.yaml
+
+Expected output:
+  ✓ No PETSc errors about unknown types
+  ✓ Solver initializes successfully
+  ✓ Simulation runs without segmentation fault
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ VALID PETSC SOLVER TYPES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+KSP Types (Linear Solver):
+  • gmres     - Default, good for general problems
+  • fgmres    - Flexible GMRES, better for difficult problems
+  • bcgs      - BiConjugate Gradient Stabilized
+  • cg        - Conjugate Gradient (symmetric problems only)
+
+Preconditioner Types (PARALLEL-SAFE):
+  • pbjacobi  - Point-block Jacobi (DEFAULT)
+  • bjacobi   - Block Jacobi
+  • asm       - Additive Schwarz Method (best for parallel)
+  • jacobi    - Simple Jacobi
+  • none      - No preconditioning
+
+Preconditioner Types (SERIAL ONLY):
+  • ilu       - Incomplete LU (best for serial runs)
+  • sor       - Successive Over-Relaxation
+  • lu        - Direct LU factorization
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ CONFIGURATION EXAMPLES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Default (Parallel-Safe):
+  solver:
+    ksp_type: gmres
+    preconditioner: pbjacobi
+
+Better Convergence (Parallel):
+  solver:
+    ksp_type: fgmres
+    preconditioner: asm
+    tolerance: 1.0e-8
+    max_iterations: 100
+
+Best Performance (Serial):
+  solver:
+    ksp_type: gmres
+    preconditioner: ilu
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ TROUBLESHOOTING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Error: "Unable to find requested KSP type"
+  → Make sure type name is LOWERCASE (gmres, not GMRES)
+
+Error: "Unable to find requested PC type"
+  → Use valid preconditioner type (pbjacobi, bjacobi, asm, ilu, etc.)
+  → Avoid "PBP" - it's not a valid PETSc type
+
+Error: Segmentation fault after solver init
+  → Using serial preconditioner (ilu/sor) in parallel? Use pbjacobi instead
+  → Check solver configuration is valid
+
+Solver doesn't converge
+  → Reduce time_step
+  → Increase max_iterations
+  → Try better preconditioner (asm, ilu)
+  → Use fgmres instead of gmres
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ RUNTIME OVERRIDES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Override solver settings at runtime:
+
+  # Use different KSP type
+  $ ./HydroPlas --config config.yaml -ksp_type fgmres
+
+  # Use different preconditioner
+  $ ./HydroPlas --config config.yaml -pc_type asm
+
+  # Monitor convergence
+  $ ./HydroPlas --config config.yaml -ksp_monitor -snes_monitor
+
+  # View solver configuration
+  $ ./HydroPlas --config config.yaml -ksp_view
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ DOCUMENTATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  • PETSC_SOLVER_FIX.md       - Detailed explanation of the fix
+  • docs/PETSC_SOLVER_GUIDE.md - Complete guide to solver configuration
+  • PETSC_FIX_SUMMARY.md      - Summary of all changes
+  • config/test_petsc_fix.yaml - Test configuration with comments
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ STATUS: ✓ FIXED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+All source code and configuration files have been updated.
+Rebuild the project and the PETSc errors should be resolved.
+
+For questions, see: docs/PETSC_SOLVER_GUIDE.md

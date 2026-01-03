@@ -144,8 +144,8 @@ solver:
   max_iterations: 50
   time_step: 1.0e-12             # seconds (1 ps)
   end_time: 1.0e-9               # 1 ns simulation
-  preconditioner: PBP             # Physics-Based Preconditioner
-  ksp_type: GMRES                 # Krylov subspace method
+  preconditioner: pbjacobi        # Point-block Jacobi preconditioner (parallel-safe)
+  ksp_type: gmres                 # Krylov subspace method (case-sensitive, must be lowercase)
 
 # Output configuration
 output:

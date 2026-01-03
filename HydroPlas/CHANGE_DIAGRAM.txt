@@ -1,0 +1,253 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                   PETSC CONFIGURATION FIX - CHANGE DIAGRAM                    ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              PROBLEM DIAGRAM                                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+User runs:  ./HydroPlas --config config/test2.yaml
+                    │
+                    ├──> Reads Configuration
+                    │         │
+                    │         ├──> ConfigParser loads defaults:
+                    │         │    ❌ ksp_type = "GMRES"
+                    │         │    ❌ preconditioner = "PBP"
+                    │         │
+                    ├──> Initializes PETSc Solver
+                    │         │
+                    │         ├──> KSPSetType(ksp, "GMRES")
+                    │         │    ❌ ERROR: Unknown type GMRES
+                    │         │
+                    │         ├──> PCSetType(pc, "PBP")
+                    │         │    ❌ ERROR: Unknown type PBP
+                    │         │
+                    │         └──> PETSc in invalid state
+                    │
+                    └──> Attempts to solve
+                         ❌ SEGMENTATION FAULT (SIGSEGV)
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              SOLUTION DIAGRAM                                │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+FIXED SOURCE CODE:
+
+src/config/ConfigParser.hpp (lines 85-86)
+┌────────────────────────────────────────┐
+│ BEFORE:                                │     AFTER:
+│                                        │
+│ std::string preconditioner = "PBP";   │ → std::string preconditioner = "pbjacobi";
+│ std::string ksp_type = "GMRES";       │ → std::string ksp_type = "gmres";
+└────────────────────────────────────────┘
+
+src/config/ConfigParser.cpp (lines 217-221, 222-230)
+┌────────────────────────────────────────┐
+│ BEFORE:                                │     AFTER:
+│                                        │
+│ else config_.solver.preconditioner     │ → else config_.solver.preconditioner
+│      = "PBP";                          │      = "pbjacobi";
+│ else config_.solver.ksp_type           │ → else config_.solver.ksp_type
+│      = "GMRES";                        │      = "gmres";
+└────────────────────────────────────────┘
+
+
+FIXED CONFIGURATION FILES:
+
+config/default_config.yaml
+┌────────────────────────────────────────┐
+│ ADDED:                                 │
+│                                        │
+│ solver:                                │
+│   type: JFNK                           │
+│   tolerance: 1.0e-6                    │
+│   max_iterations: 50                   │
+│   time_step: 1.0e-12                   │
+│   end_time: 1.0e-9                     │
+│   ksp_type: gmres          ✓           │
+│   preconditioner: pbjacobi ✓           │
+└────────────────────────────────────────┘
+
+config/complete_feature_demo.yaml
+┌────────────────────────────────────────┐
+│ BEFORE:                                │     AFTER:
+│                                        │
+│   preconditioner: PBP                  │ →   preconditioner: pbjacobi
+│   ksp_type: GMRES                      │ →   ksp_type: gmres
+└────────────────────────────────────────┘
+
+
+USER WORKFLOW AFTER FIX:
+
+User runs:  ./rebuild_fix.sh  (or manual rebuild)
+                    │
+                    ├──> Removes old build
+                    ├──> Runs cmake ..
+                    ├──> Runs make -j
+                    │
+                    └──> ✓ Build successful
+
+User runs:  ./HydroPlas --config config/test_petsc_fix.yaml
+                    │
+                    ├──> Reads Configuration
+                    │         │
+                    │         ├──> ConfigParser loads:
+                    │         │    ✓ ksp_type = "gmres"
+                    │         │    ✓ preconditioner = "pbjacobi"
+                    │         │
+                    ├──> Initializes PETSc Solver
+                    │         │
+                    │         ├──> KSPSetType(ksp, "gmres")
+                    │         │    ✓ SUCCESS
+                    │         │
+                    │         ├──> PCSetType(pc, "pbjacobi")
+                    │         │    ✓ SUCCESS
+                    │         │
+                    │         └──> PETSc initialized correctly
+                    │
+                    └──> Solves equations
+                         ✓ SIMULATION RUNS SUCCESSFULLY
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        VALIDATION FLOW DIAGRAM                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+User runs:  python3 validate_config.py
+                    │
+                    ├──> Scans config/*.yaml files
+                    │
+                    ├──> For each file:
+                    │    │
+                    │    ├──> Check if solver.ksp_type exists
+                    │    │    │
+                    │    │    ├──> Is it lowercase?  ✓/❌
+                    │    │    └──> Is it valid type? ✓/⚠️
+                    │    │
+                    │    └──> Check if solver.preconditioner exists
+                    │         │
+                    │         ├──> Is it lowercase?  ✓/❌
+                    │         ├──> Is it "PBP"?     ❌ REJECT
+                    │         └──> Is it valid type? ✓/⚠️
+                    │
+                    └──> Report:
+                         ✓ All files valid
+                         or
+                         ❌ Errors found (with details)
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         VALID PETSC TYPES REFERENCE                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+KSP TYPES (Linear Solver) - Must be lowercase!
+┌──────────┬─────────────────────────────────────────┬────────────────────┐
+│ Type     │ Description                             │ Use Case           │
+├──────────┼─────────────────────────────────────────┼────────────────────┤
+│ gmres    │ Generalized Minimal Residual            │ ✓ Default, general │
+│ fgmres   │ Flexible GMRES                          │ ✓ Better converge  │
+│ bcgs     │ BiConjugate Gradient Stabilized         │ ✓ GMRES alternative│
+│ cg       │ Conjugate Gradient                      │ ✓ Symmetric only   │
+│ bicg     │ BiConjugate Gradient                    │ ✓ Simple iterative │
+│ tfqmr    │ Transpose-Free QMR                      │ ✓ Memory efficient │
+└──────────┴─────────────────────────────────────────┴────────────────────┘
+
+PRECONDITIONER TYPES - Must be lowercase!
+┌────────────┬──────────┬──────────────────────────────┬────────────────────┐
+│ Type       │ Parallel │ Description                  │ Recommended For    │
+├────────────┼──────────┼──────────────────────────────┼────────────────────┤
+│ pbjacobi   │ ✓ Yes    │ Point-block Jacobi           │ ✓ Default parallel │
+│ bjacobi    │ ✓ Yes    │ Block Jacobi                 │ ✓ Parallel runs    │
+│ asm        │ ✓ Yes    │ Additive Schwarz Method      │ ✓ Best parallel    │
+│ jacobi     │ ✓ Yes    │ Simple Jacobi                │ ✓ Basic parallel   │
+│ ilu        │ ✗ Serial │ Incomplete LU                │ ✓ Best serial      │
+│ sor        │ ✗ Serial │ Successive Over-Relaxation   │ ✓ Serial only      │
+│ lu         │ ✗ Serial │ Direct LU factorization      │ ✓ Small problems   │
+│ none       │ ✓ Yes    │ No preconditioning           │ ✓ Testing only     │
+└────────────┴──────────┴──────────────────────────────┴────────────────────┘
+
+INVALID TYPES TO AVOID:
+┌─────────────────┬──────────────────────────────────────────────────────────┐
+│ WRONG           │ REASON                                                   │
+├─────────────────┼──────────────────────────────────────────────────────────┤
+│ GMRES           │ ❌ Must be lowercase: gmres                              │
+│ FGMRES          │ ❌ Must be lowercase: fgmres                             │
+│ PBP             │ ❌ Not a valid PETSc type (use pbjacobi)                 │
+│ PBJACOBI        │ ❌ Must be lowercase: pbjacobi                           │
+│ ILU             │ ❌ Must be lowercase: ilu                                │
+└─────────────────┴──────────────────────────────────────────────────────────┘
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           FILES CREATED/MODIFIED                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+SOURCE CODE (3 changes):
+  ✓ src/config/ConfigParser.hpp          [Modified - defaults fixed]
+  ✓ src/config/ConfigParser.cpp          [Modified - 2 locations fixed]
+
+CONFIGURATION FILES (3 files):
+  ✓ config/default_config.yaml           [Modified - solver section added]
+  ✓ config/complete_feature_demo.yaml    [Modified - solver types fixed]
+  ✓ config/test_petsc_fix.yaml           [Created - test configuration]
+
+DOCUMENTATION (5 files):
+  ✓ PETSC_SOLVER_FIX.md                  [Created - detailed fix explanation]
+  ✓ docs/PETSC_SOLVER_GUIDE.md           [Created - complete solver guide]
+  ✓ PETSC_FIX_SUMMARY.md                 [Created - summary of changes]
+  ✓ QUICK_FIX_REFERENCE.txt              [Created - quick reference card]
+  ✓ GIT_COMMIT_INFO.md                   [Created - commit template]
+  ✓ FIX_COMPLETE_README.md               [Created - comprehensive summary]
+  ✓ README.md                            [Modified - troubleshooting added]
+
+TOOLS (3 files):
+  ✓ rebuild_fix.sh                       [Created - automated rebuild script]
+  ✓ validate_config.py                   [Created - configuration validator]
+  ✓ CHANGE_DIAGRAM.txt                   [Created - this file]
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            TESTING CHECKLIST                                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+□ 1. Rebuild project
+     $ ./rebuild_fix.sh
+     or
+     $ rm -rf build && mkdir build && cd build && cmake .. && make
+
+□ 2. Validate configurations
+     $ python3 validate_config.py
+
+□ 3. Test with provided config
+     $ ./HydroPlas --config config/test_petsc_fix.yaml
+
+□ 4. Verify no PETSc errors
+     Expected output should NOT contain:
+       ❌ "Unable to find requested KSP type"
+       ❌ "Unable to find requested PC type"
+       ❌ "Segmentation Violation"
+
+□ 5. Check simulation runs
+     Expected output SHOULD contain:
+       ✓ "Initializing Solver..."
+       ✓ "Starting Simulation..."
+       ✓ Normal simulation progress
+
+□ 6. Test with your own config
+     $ ./HydroPlas --config /path/to/your/config.yaml
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              STATUS: COMPLETE                                │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+✓ All source code fixed
+✓ All configurations validated
+✓ Comprehensive documentation created
+✓ Testing tools provided
+✓ Ready for rebuild and deployment
+
+Next step: Run ./rebuild_fix.sh and test!
+
+═══════════════════════════════════════════════════════════════════════════════

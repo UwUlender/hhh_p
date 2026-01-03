@@ -41,6 +41,14 @@ reactions:
     b: 0.0
     e_a: 0.0
     table_file: ""
+solver:
+  type: JFNK
+  tolerance: 1.0e-6
+  max_iterations: 50
+  time_step: 1.0e-12
+  end_time: 1.0e-9
+  ksp_type: gmres
+  preconditioner: pbjacobi
 output:
   format: hdf5
   frequency_step: 10
