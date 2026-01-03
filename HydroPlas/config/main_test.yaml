@@ -111,7 +111,7 @@ solver:
   tolerance: 1.0e-8               # SNES tolerance
   max_iterations: 200
   time_step: 1.8436578e-11        # seconds 
-  end_time: 7.37463e-5            # 1 ns simulation
+  end_time: 7.37463e-7            # 1 ns simulation
   preconditioner: jacobi          # Standard preconditioner
   ksp_type: gmres                 # Krylov subspace method
 
