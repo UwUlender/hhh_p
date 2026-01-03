@@ -68,11 +68,12 @@ void PlasmaSolver::setup_solver() {
     
     SNESSetFunction(snes_, F_, FormFunction, &ctx_);
     
-    Mat J;
-    MatCreateSNESMF(snes_, &J);
+    // Create Jacobian matrix for preconditioning only
     DMCreateMatrix(grid_.get_dm(), &P_poisson_); 
-    SNESSetJacobian(snes_, J, P_poisson_, FormJacobian, &ctx_);
-    MatDestroy(&J);
+    
+    // Use -snes_mf_operator to enable matrix-free Jacobian
+    // The Jacobian (J) will be computed matrix-free, but preconditioner (P) uses P_poisson_
+    SNESSetJacobian(snes_, P_poisson_, P_poisson_, FormJacobian, &ctx_);
     
     // Configure JFNK and Preconditioner
     KSP ksp;
@@ -389,42 +390,33 @@ PetscErrorCode FormFunction(SNES snes, Vec X, Vec F, void* ctx_void) {
         }
     }
     
-    // RE-LOOP for Divergence to avoid double counting or ghost issues
-    // Loop over cells i,j
+    // RE-LOOP for Poisson Equation
+    // Loop over cells i,j (interior cells only for Poisson, boundaries handled separately)
     for (int j=ys; j<ys+ym; ++j) {
         for (int i=xs; i<xs+xm; ++i) {
-             // 1. Right Face (i+1/2)
-             // ... Compute Flux_R ...
-             // f[j][i] += Flux_R * Area_R
-             
-             // 2. Left Face (i-1/2)
-             // ... Compute Flux_L ...
-             // f[j][i] -= Flux_L * Area_L
-             
-             // This requires computing flux twice per face or caching. 
-             // Computing twice is fine for now.
+             // Skip boundary cells - they have Dirichlet BCs
+             if (i == 0 || i == nx-1) continue;
              
              // POISSON: -Div(eps Grad phi) = rho
              // - [ eps*(phi_R-phi_C)/dx_R * A_R - eps*(phi_C-phi_L)/dx_L * A_L ] = rho * Vol
              // Residual: -Flux_Phi_Net - rho*Vol
              
-             // Get Rho
+             // Get Rho (charge density)
              double rho = 0.0;
              const auto& species = chem->get_species();
              for (int k=0; k<num_species; ++k) {
                  rho += x[j][i][k] * species[k].charge * q_e;
              }
              
-             // Calculate Phi Fluxes
-             // Right
+             // Calculate Phi Fluxes (all indices are valid since i > 0 and i < nx-1)
              double phi_C = x[j][i][idx_phi];
-             double phi_R = x[j][i+1][idx_phi]; // Ghost
-             double dx_R = grid->get_dx_face(i);
-             double flux_phi_R = epsilon_0 * (phi_R - phi_C) / dx_R;
+             double phi_R = x[j][i+1][idx_phi]; 
+             double phi_L = x[j][i-1][idx_phi]; 
              
-             // Left
-             double phi_L = x[j][i-1][idx_phi]; // Ghost
+             double dx_R = grid->get_dx_face(i);
              double dx_L = grid->get_dx_face(i-1);
+             
+             double flux_phi_R = epsilon_0 * (phi_R - phi_C) / dx_R;
              double flux_phi_L = epsilon_0 * (phi_C - phi_L) / dx_L;
              
              double div_phi = (flux_phi_R * grid->get_face_area_x(i, j) - flux_phi_L * grid->get_face_area_x(i-1, j));
@@ -630,19 +622,21 @@ PetscErrorCode FormJacobian(SNES snes, Vec X, Mat J, Mat P, void* ctx_void) {
     DMDAGetCorners(dm, &xs, &ys, NULL, &xm, &ym, NULL);
     
     int idx_phi = ctx->idx_phi;
+    double dt = ctx->dt;
     
     for (int j=ys; j<ys+ym; ++j) {
         for (int i=xs; i<xs+xm; ++i) {
              MatStencil row;
              row.i = i; row.j = j; 
              
-             // Diagonal Species
+             // Diagonal Species - use time step scaling
              for (int k=0; k<idx_phi; ++k) {
                  row.c = k;
-                 MatSetValuesStencil(P, 1, &row, 1, &row, &ctx->dt, INSERT_VALUES); // 1/dt approx
+                 double val = 1.0 / dt;  // Mass matrix diagonal scaling
+                 MatSetValuesStencil(P, 1, &row, 1, &row, &val, INSERT_VALUES);
              }
              
-             // Poisson: Laplacian
+             // Poisson: Laplacian (simplified - just diagonal for now)
              row.c = idx_phi;
              double v_diag = 2.0; // Simplified
              MatSetValuesStencil(P, 1, &row, 1, &row, &v_diag, INSERT_VALUES);
@@ -652,6 +646,13 @@ PetscErrorCode FormJacobian(SNES snes, Vec X, Mat J, Mat P, void* ctx_void) {
     
     MatAssemblyBegin(P, MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(P, MAT_FINAL_ASSEMBLY);
+    
+    // If J != P, also assemble J
+    if (J != P) {
+        MatAssemblyBegin(J, MAT_FINAL_ASSEMBLY);
+        MatAssemblyEnd(J, MAT_FINAL_ASSEMBLY);
+    }
+    
     return 0;
 }
 
