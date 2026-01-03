@@ -50,7 +50,7 @@ species:
     mass: 6.6335e-26
     diffusion_coeff: 7.515528e-3        # (constant for neutrals)
     mobility_file: ""            # Not used for neutrals
-	
+    
 #  - name: Ar1s3
 #    type: neutral
 #    charge: 0.0
@@ -62,38 +62,38 @@ reactions:
   - equation: "e + Ar -> 2e + Ar+"
     name_for_output: ioniz1
     type: ionization
-	energy_change: -15.7
+    energy_change: -15.7
     rate_type: table
     table_file: data/ar_ionization.txt # BOLSIG+ format ( ): Energy Electron (eV) | Reaction Coefficient (*N_A (Avogadro Number))
-	
+    
   - equation: "e + Ar -> e + Ar"
     name_for_output: elast1
     type: elastic
-	energy_change: "" # Not used for elastic type reactions
+    energy_change: "" # Not used for elastic type reactions
     rate_type: table
     table_file: data/ar_elastic_mc_red.txt # BOLSIG+ format ( ): Energy Electron (eV) | Reaction Coefficient (*N_A (Avogadro Number))
-	
+    
   - equation: "e + Ar -> e + Ar1s5"
     name_for_output: excit1
     type: excitation
-	energy_change: -11.56
+    energy_change: -11.56
     rate_type: table
     table_file: data/ar_excitation.txt # BOLSIG+ format ( ): Energy Electron (eV) | Reaction Coefficient(*N_A (Avogadro Number))
-	
+    
 #  - equation: "Ar1s3 -> Ar1s5"
 #    name_for_output: radia1
 #    type: radiation
-#	energy_change: "" # Not used for elastic type reactions
+#    energy_change: "" # Not used for elastic type reactions
 #    rate_type: equation
-#	equation_constants : "rho_L M_gas Tgas g1s5 g1s4 g1s3 g1s2 g2p10 g2p9 g2p8 g2p7 g2p6 g2p5 g2p4 g2p3 g2p2 g2p1" # Names of equation constants
+#    equation_constants : "rho_L M_gas Tgas g1s5 g1s4 g1s3 g1s2 g2p10 g2p9 g2p8 g2p7 g2p6 g2p5 g2p4 g2p3 g2p2 g2p1" # Names of equation constants
 #    equation_values : "0.03 39.95 300.0 5.0 3.0 1.0 3.0 3.0 7.0 5.0 3.0 5.0 1.0 3.0 5.0 3.0 1.0" # Values of equation constants above
 #    equation_variables : "Ar1s5_density Ar1s4_density Ar1s3_density Ar1s2_density" # The names of the variables used in the equation, the values of which are derived from the calculation in a given (past) time step at the same point in the area where the reaction is determined
 #    equation: {18900000 * (2.0 - exp((-1.0e-3) * rho_L * ((g2p10 * (912.547 * 1.0e-9) ^ (3.0) * Ar1s5_density * 1.89e+7 * ((M_gas)/(2.0 * 8.3145 * Tgas))^(0.5))/(g1s5 * 8.0 * 5.568328))))/(1.0 + (rho_L * ((g2p10 * (912.547 * 1.0e-9) ^ (3.0) * Ar1s5_density * 1.89e+7 * ((M_gas)/(2.0 * 8.3145 * Tgas))^(0.5))/(g1s5 * 8.0 * 5.568328))))}
-	
+    
 initial_condition:
   - name: e
     value: 1e14  # 1/m^3
-	
+    
   - name: e_energy # Electron energy
     value: 1.5  # eV
 
@@ -128,11 +128,11 @@ output:
     - electric_field
     - electron_energy             # Electron temperature (eV)
     - Ar1s5_density
-#	- Ar1s3_density
+#    - Ar1s3_density
   rates:                          # Which rates to output
     - ioniz1
-	- excit1
-#	- radia1
+    - excit1
+#    - radia1
   
   # Checkpoint configuration
   checkpoint_frequency: 1000      # Save checkpoint every 1000 steps
