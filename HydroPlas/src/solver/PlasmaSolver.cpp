@@ -102,6 +102,23 @@ void PlasmaSolver::setup_solver() {
         // or 'jacobi' for robustness.
         pc_type = "jacobi"; 
     }
+    
+    // NEW: SMP (Single Matrix Preconditioner) Support
+    if (pc_type == "smp" || pc_type == "single_matrix") {
+        // SMP implies building a fuller Jacobian in FormJacobian and using a strong solver on it.
+        // Usually LU (direct) or ILU (iterative).
+        // If user hasn't specified KSP, default to PREONLY for LU or GMRES for ILU.
+        // Let's suggest ILU as default for SMP if not specified differently, 
+        // but often SMP implies Direct Solve if problem is small enough. 
+        // For 1D/2D plasma, ILU is good.
+        
+        // Ensure we use a PC type that handles the matrix well
+        pc_type = "ilu"; // Default to ILU for SMP
+        
+        // Optional: Force KSP to GMRES if it was something else? 
+        // Leaving KSP as config says (default gmres).
+    }
+
     PCSetType(pc, pc_type.c_str());
     
     // Set tolerances
@@ -619,81 +636,162 @@ PetscErrorCode FormFunction(SNES snes, Vec X, Vec F, void* ctx_void) {
 PetscErrorCode FormJacobian(SNES snes, Vec X, Mat J, Mat P, void* ctx_void) {
     SolverContext* ctx = (SolverContext*)ctx_void;
     RectilinearGrid* grid = ctx->grid;
+    Chemistry* chem = ctx->chemistry;
     DM dm = grid->get_dm();
     PetscErrorCode ierr;
     
-    // Identity for Species (Mass Matrix approx) + Laplacian for Poisson
-    // Just putting 1s on diagonal to start, or building Laplacian for P_poisson
-    
-    // ... Implementation of Preconditioner ...
-    // For JFNK, P just needs to be a good approx.
-    // Poisson block: Laplacian
-    // Transport blocks: Identity or convection-diffusion operator.
-    
+    // Check if SMP is requested
+    std::string pc_type = ctx->config->solver.preconditioner;
+    std::transform(pc_type.begin(), pc_type.end(), pc_type.begin(), [](unsigned char c){ return std::tolower(c); });
+    bool is_smp = (pc_type == "smp" || pc_type == "single_matrix");
+
     MatZeroEntries(P);
     
-    // Loop and set stencil
+    // Get Local Vector for X to evaluate coefficients
+    Vec Xloc;
+    ierr = DMGetLocalVector(dm, &Xloc); CHKERRQ(ierr);
+    ierr = DMGlobalToLocalBegin(dm, X, INSERT_VALUES, Xloc); CHKERRQ(ierr);
+    ierr = DMGlobalToLocalEnd(dm, X, INSERT_VALUES, Xloc); CHKERRQ(ierr);
+    PetscScalar ***x;
+    ierr = DMDAVecGetArrayDOF(dm, Xloc, &x); CHKERRQ(ierr);
+
     int xs, ys, xm, ym;
     DMDAGetCorners(dm, &xs, &ys, NULL, &xm, &ym, NULL);
     
+    int nx = grid->get_nx();
     int idx_phi = ctx->idx_phi;
+    int num_species = chem->get_num_species();
     double dt = ctx->dt;
+    double eps0 = 8.8541878e-12;
     
-    // Grid spacing (assuming uniform for preconditioner simplified logic)
-    // Or better, get from grid object
-    
+    // Iterate grid
     for (int j=ys; j<ys+ym; ++j) {
         for (int i=xs; i<xs+xm; ++i) {
              MatStencil row;
              row.i = i; row.j = j; 
              
-             // Diagonal Species - use time step scaling
-             for (int k=0; k<idx_phi; ++k) {
+             double vol = grid->get_cell_volume(i, j);
+
+             // --- Boundary Handling ---
+             if (i == 0 || i == nx - 1) {
+                 for (int k=0; k<=idx_phi; ++k) {
+                     row.c = k;
+                     double val = 1.0; 
+                     MatSetValuesStencil(P, 1, &row, 1, &row, &val, INSERT_VALUES);
+                 }
+                 continue; 
+             }
+
+             // --- Interior Cells ---
+
+             // 1. Species Equations
+             for (int k=0; k<num_species; ++k) {
                  row.c = k;
-                 double val = 1.0 / dt;  // Mass matrix diagonal scaling
-                 MatSetValuesStencil(P, 1, &row, 1, &row, &val, INSERT_VALUES);
+                 
+                 double val_diag = 0.0;
+                 if (is_smp) {
+                     val_diag = vol / dt; // Time term
+                 } else {
+                     val_diag = 1.0 / dt; // Old logic
+                 }
+                 
+                 if (is_smp) {
+                     const auto& sp = chem->get_species()[k];
+                     double mu=0.0, D=0.0;
+                     // Use constant 2eV for transport properties in PC for robustness
+                     sp.get_transport(2.0, mu, D); 
+                     
+                     double signed_mu = mu * (sp.charge > 0 ? 1.0 : -1.0);
+                     
+                     // Flux Right (i -> i+1)
+                     {
+                         double dx = grid->get_dx_face(i);
+                         double area = grid->get_face_area_x(i, j);
+                         double dphi = x[j][i+1][idx_phi] - x[j][i][idx_phi];
+                         
+                         double Pe = 0.0;
+                         if (sp.type != SpeciesType::Neutral && D > 1e-20) {
+                             Pe = signed_mu * dphi / D;
+                         }
+                         
+                         double dF_dni = (D/dx) * bernoulli(Pe) * area;
+                         double dF_dnip1 = -(D/dx) * bernoulli(-Pe) * area;
+                         
+                         val_diag += dF_dni;
+                         
+                         MatStencil col;
+                         col.i = i+1; col.j = j; col.c = k;
+                         MatSetValuesStencil(P, 1, &row, 1, &col, &dF_dnip1, INSERT_VALUES);
+                     }
+                     
+                     // Flux Left (i-1 -> i)
+                     {
+                         double dx = grid->get_dx_face(i-1);
+                         double area = grid->get_face_area_x(i-1, j);
+                         double dphi = x[j][i][idx_phi] - x[j][i-1][idx_phi];
+                         
+                         double Pe = 0.0;
+                         if (sp.type != SpeciesType::Neutral && D > 1e-20) {
+                             Pe = signed_mu * dphi / D;
+                         }
+                         
+                         double dF_dnim1 = -(D/dx) * bernoulli(Pe) * area;
+                         double dF_dni = -(D/dx) * (-bernoulli(-Pe)) * area; 
+                         
+                         val_diag += dF_dni;
+                         
+                         MatStencil col;
+                         col.i = i-1; col.j = j; col.c = k;
+                         MatSetValuesStencil(P, 1, &row, 1, &col, &dF_dnim1, INSERT_VALUES);
+                     }
+                 }
+                 
+                 MatSetValuesStencil(P, 1, &row, 1, &row, &val_diag, INSERT_VALUES);
              }
              
-             // Poisson: Laplacian
-             // -eps * d2phi/dx2
-             // approx -eps * (phi_{i+1} - 2 phi_i + phi_{i-1}) / dx^2
-             // Diag: 2*eps/dx^2. Off-diag: -eps/dx^2.
-             double eps0 = 8.854e-12;
-             double dx = grid->get_dx(i);
-             double val = eps0 / (dx*dx);
-             
+             // 2. Poisson Equation
+             // For Poisson, we always use the stencil (it's critical)
              row.c = idx_phi;
-             MatStencil cols[3];
-             double vals[3];
-             int num_cols = 0;
+             double val_diag_phi = 0.0;
              
-             // Center
-             cols[num_cols].i = i; cols[num_cols].j = j; cols[num_cols].c = idx_phi;
-             vals[num_cols] = 2.0 * val;
-             num_cols++;
-             
-             // Left
-             if (i > 0) {
-                 cols[num_cols].i = i-1; cols[num_cols].j = j; cols[num_cols].c = idx_phi;
-                 vals[num_cols] = -1.0 * val;
-                 num_cols++;
+             // Right Face
+             {
+                 double dx = grid->get_dx_face(i);
+                 double area = grid->get_face_area_x(i, j);
+                 // Term: -Flux * Area, Flux = eps * dphi/dx
+                 double dF_dphi_i = (eps0/dx) * area;
+                 double dF_dphi_ip1 = -(eps0/dx) * area;
+                 
+                 val_diag_phi += dF_dphi_i;
+                 MatStencil col;
+                 col.i = i+1; col.j = j; col.c = idx_phi;
+                 MatSetValuesStencil(P, 1, &row, 1, &col, &dF_dphi_ip1, INSERT_VALUES);
              }
              
-             // Right
-             if (i < grid->get_nx() - 1) {
-                 cols[num_cols].i = i+1; cols[num_cols].j = j; cols[num_cols].c = idx_phi;
-                 vals[num_cols] = -1.0 * val;
-                 num_cols++;
+             // Left Face
+             {
+                 double dx = grid->get_dx_face(i-1);
+                 double area = grid->get_face_area_x(i-1, j);
+                 // Term: +Flux * Area
+                 double dF_dphi_i = (eps0/dx) * area;
+                 double dF_dphi_im1 = -(eps0/dx) * area;
+                 
+                 val_diag_phi += dF_dphi_i;
+                 MatStencil col;
+                 col.i = i-1; col.j = j; col.c = idx_phi;
+                 MatSetValuesStencil(P, 1, &row, 1, &col, &dF_dphi_im1, INSERT_VALUES);
              }
              
-             MatSetValuesStencil(P, 1, &row, num_cols, cols, vals, INSERT_VALUES);
+             MatSetValuesStencil(P, 1, &row, 1, &row, &val_diag_phi, INSERT_VALUES);
         }
     }
+    
+    ierr = DMDAVecRestoreArrayDOF(dm, Xloc, &x); CHKERRQ(ierr);
+    ierr = DMRestoreLocalVector(dm, &Xloc); CHKERRQ(ierr);
     
     MatAssemblyBegin(P, MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(P, MAT_FINAL_ASSEMBLY);
     
-    // If J != P, also assemble J
     if (J != P) {
         MatAssemblyBegin(J, MAT_FINAL_ASSEMBLY);
         MatAssemblyEnd(J, MAT_FINAL_ASSEMBLY);
