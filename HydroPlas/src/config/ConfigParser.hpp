@@ -82,8 +82,8 @@ struct SolverConfig {
     int max_iterations = 50; // Maximum solver iterations
     double time_step = 1.0e-12; // Time step size (seconds)
     double end_time = 1.0e-9; // Simulation end time (seconds)
-    std::string preconditioner = "PBP"; // "PBP", etc.
-    std::string ksp_type = "GMRES"; // "GMRES", etc.
+    std::string preconditioner = "jacobi"; // "jacobi", "ilu", etc.
+    std::string ksp_type = "gmres"; // "gmres", etc.
 };
 
 struct OutputConfig {

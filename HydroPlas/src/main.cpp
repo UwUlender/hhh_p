@@ -18,6 +18,7 @@ int main(int argc, char **argv) {
     char conf[256];
     PetscBool flg;
     PetscOptionsGetString(NULL, NULL, "-config", conf, sizeof(conf), &flg);
+    if (!flg) PetscOptionsGetString(NULL, NULL, "--config", conf, sizeof(conf), &flg);
     if (flg) config_file = conf;
 
     try {
@@ -52,6 +53,7 @@ int main(int argc, char **argv) {
         char restart_file[256] = "";
         PetscBool has_restart;
         PetscOptionsGetString(NULL, NULL, "-restart", restart_file, sizeof(restart_file), &has_restart);
+        if (!has_restart) PetscOptionsGetString(NULL, NULL, "--restart", restart_file, sizeof(restart_file), &has_restart);
         
         bool should_restart = has_restart || config.restart.enabled;
         std::string restart_filename = has_restart ? std::string(restart_file) : config.restart.file;
@@ -60,6 +62,7 @@ int main(int argc, char **argv) {
         if (should_restart) {
              PetscPrintf(PETSC_COMM_WORLD, "Restarting from %s...\n", restart_filename.c_str());
              PetscOptionsGetInt(NULL, NULL, "-restart_step", &restart_step, NULL);
+             PetscOptionsGetInt(NULL, NULL, "--restart_step", &restart_step, NULL);
              output.read_state(restart_filename, restart_step, solver.get_solution());
              step = restart_step;
              // t should be read from file too. 
@@ -74,7 +77,9 @@ int main(int argc, char **argv) {
         PetscReal dt_override, tend_override;
         PetscBool dt_set, tend_set;
         PetscOptionsGetReal(NULL, NULL, "-dt", &dt_override, &dt_set);
+        if (!dt_set) PetscOptionsGetReal(NULL, NULL, "--dt", &dt_override, &dt_set);
         PetscOptionsGetReal(NULL, NULL, "-tend", &tend_override, &tend_set);
+        if (!tend_set) PetscOptionsGetReal(NULL, NULL, "--tend", &tend_override, &tend_set);
         if (dt_set) dt = dt_override;
         if (tend_set) t_end = tend_override;
         
