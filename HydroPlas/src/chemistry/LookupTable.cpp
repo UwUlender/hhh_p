@@ -15,14 +15,24 @@ void LookupTable::load(const std::string& filename) {
     // Assuming: Energy | Mobility | Diffusion
     // Skip headers
     std::string line;
+    energy_grid_.clear();
+    mobility_data_.clear();
+    diffusion_data_.clear();
+
     while (std::getline(fin, line)) {
-        if (line.empty() || !isdigit(line[0])) continue; // rudimentary skip
+        // Skip empty lines or non-digit lines
+        // Check first non-whitespace character
+        size_t first_char = line.find_first_not_of(" \t\r\n");
+        if (first_char == std::string::npos) continue;
+        if (!isdigit(line[first_char]) && line[first_char] != '+' && line[first_char] != '-' && line[first_char] != '.') continue;
+        
         std::stringstream ss(line);
         double e, mu, d;
-        ss >> e >> mu >> d;
-        energy_grid_.push_back(e);
-        mobility_data_.push_back(mu);
-        diffusion_data_.push_back(d);
+        if (ss >> e >> mu >> d) {
+            energy_grid_.push_back(e);
+            mobility_data_.push_back(mu);
+            diffusion_data_.push_back(d);
+        }
     }
 }
 
@@ -41,7 +51,10 @@ void LookupTable::load_rate(const std::string& filename) {
     
     while (std::getline(fin, line)) {
         // Skip empty lines and comments
-        if (line.empty() || line[0] == '#' || !isdigit(line[0])) continue;
+        // Check first non-whitespace character
+        size_t first_char = line.find_first_not_of(" \t\r\n");
+        if (first_char == std::string::npos) continue;
+        if (line[first_char] == '#' || (!isdigit(line[first_char]) && line[first_char] != '+' && line[first_char] != '-' && line[first_char] != '.')) continue;
         
         std::stringstream ss(line);
         double e, rate;
