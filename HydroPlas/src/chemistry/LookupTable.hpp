@@ -23,6 +23,12 @@ public:
     // For reaction rates
     double get_rate(double energy) const;
 
+    // Scale transport data (mobility and diffusion) by factor
+    void scale_transport(double factor);
+
+    // Scale rate data by factor
+    void scale_rate(double factor);
+
 private:
     std::vector<double> energy_grid_;
     std::vector<double> mobility_data_;
