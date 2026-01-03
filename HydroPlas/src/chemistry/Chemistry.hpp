@@ -30,6 +30,8 @@ struct Reaction {
     // Helper to calculate rate coefficient
     // Updated to accept variable map for equation types
     double get_rate_coeff(double mean_energy, double T_gas, const std::map<std::string, double>& vars = {}) const;
+
+    std::string name; // Name for output
 };
 
 class Chemistry {

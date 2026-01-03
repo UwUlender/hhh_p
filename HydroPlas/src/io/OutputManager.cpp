@@ -5,8 +5,8 @@
 
 namespace HydroPlas {
 
-OutputManager::OutputManager(const OutputConfig& config, const RectilinearGrid& grid) 
-    : config_(config), grid_(grid) {
+OutputManager::OutputManager(const OutputConfig& config, const RectilinearGrid& grid, const Chemistry& chemistry) 
+    : config_(config), grid_(grid), chemistry_(chemistry) {
     
     int rank;
     MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
@@ -91,6 +91,7 @@ void OutputManager::write_state(double time, int step, Vec X, int num_species) {
         std::vector<hsize_t> dims = {(hsize_t)ny, (hsize_t)nx}; // 2D layout
         
         // Write each species
+        const auto& species = chemistry_.get_species();
         for(int k=0; k<num_species; ++k) {
             for(int j=0; j<ny; ++j) {
                 for(int i=0; i<nx; ++i) {
@@ -98,7 +99,11 @@ void OutputManager::write_state(double time, int step, Vec X, int num_species) {
                     buffer[j*nx+i] = x_ptr[idx];
                 }
             }
-            write_dataset(group, "n_" + std::to_string(k), buffer, dims);
+            std::string name = "n_" + std::to_string(k);
+            if (k < (int)species.size()) {
+                name = "n_" + species[k].name;
+            }
+            write_dataset(group, name, buffer, dims);
         }
         
         // Potential (last)
@@ -109,6 +114,53 @@ void OutputManager::write_state(double time, int step, Vec X, int num_species) {
             }
         }
         write_dataset(group, "phi", buffer, dims);
+        
+        // Electric Field Calculation
+        bool save_efield = false;
+        for (const auto& field : config_.save_fields) {
+            if (field == "electric_field") {
+                save_efield = true;
+                break;
+            }
+        }
+
+        if (save_efield) {
+            std::vector<double> e_field(size, 0.0);
+            // Compute E = -grad(phi)
+            // Assuming 1D for now as per main_test.yaml
+            for (int j = 0; j < ny; ++j) {
+                for (int i = 0; i < nx; ++i) {
+                    double phi_c = buffer[j*nx + i];
+                    double E = 0.0;
+                    
+                    if (i > 0 && i < nx - 1) {
+                         double phi_L = buffer[j*nx + i - 1];
+                         double phi_R = buffer[j*nx + i + 1];
+                         double dx_L = grid_.get_cell_center_x(i) - grid_.get_cell_center_x(i-1);
+                         double dx_R = grid_.get_cell_center_x(i+1) - grid_.get_cell_center_x(i);
+                         // Simple central difference: (phi_R - phi_L) / (dx_L + dx_R)
+                         // Wait, dx_L + dx_R is distance between centers i-1 and i+1
+                         E = -(phi_R - phi_L) / (dx_L + dx_R);
+                    } else if (i == 0) {
+                        // Forward
+                        if (nx > 1) {
+                             double phi_R = buffer[j*nx + i + 1];
+                             double dx = grid_.get_cell_center_x(i+1) - grid_.get_cell_center_x(i);
+                             E = -(phi_R - phi_c) / dx;
+                        }
+                    } else if (i == nx - 1) {
+                        // Backward
+                        if (nx > 1) {
+                             double phi_L = buffer[j*nx + i - 1];
+                             double dx = grid_.get_cell_center_x(i) - grid_.get_cell_center_x(i-1);
+                             E = -(phi_c - phi_L) / dx;
+                        }
+                    }
+                    e_field[j*nx + i] = E;
+                }
+            }
+            write_dataset(group, "electric_field", e_field, dims);
+        }
         
         // Electron Energy (second to last)
         for(int j=0; j<ny; ++j) {
@@ -142,8 +194,13 @@ void OutputManager::write_rates(int step, const std::vector<std::vector<double>>
          
          std::vector<hsize_t> dims = {(hsize_t)ny, (hsize_t)nx};
          
+         const auto& reactions = chemistry_.get_reactions();
          for (size_t r=0; r<rates.size(); ++r) {
-             write_dataset(group, "reaction_" + std::to_string(r), rates[r], dims);
+             std::string name = "reaction_" + std::to_string(r);
+             if (r < reactions.size() && !reactions[r].name.empty()) {
+                 name = reactions[r].name;
+             }
+             write_dataset(group, name, rates[r], dims);
          }
          
          H5Gclose(group);

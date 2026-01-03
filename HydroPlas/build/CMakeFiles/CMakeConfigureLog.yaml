@@ -657,3 +657,135 @@ events:
         
       exitCode: 2
 ...
+
+---
+events:
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/FindMPI.cmake:1278 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/FindMPI.cmake:1322 (_MPI_try_staged_settings)"
+      - "/usr/share/cmake-3.28/Modules/FindMPI.cmake:1645 (_MPI_check_lang_works)"
+      - "CMakeLists.txt:23 (find_package)"
+    description: "The MPI test test_mpi for C in mode normal"
+    directories:
+      source: "/workspace/HydroPlas/build/CMakeFiles/CMakeScratch/TryCompile-u5vKzq"
+      binary: "/workspace/HydroPlas/build/CMakeFiles/CMakeScratch/TryCompile-u5vKzq"
+    cmakeVariables:
+      CMAKE_C_FLAGS: ""
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+    buildResult:
+      variable: "MPI_RESULT_C_test_mpi_normal"
+      cached: true
+      stdout: |
+        Change Dir: '/workspace/HydroPlas/build/CMakeFiles/CMakeScratch/TryCompile-u5vKzq'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_0af62/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_0af62.dir/build.make CMakeFiles/cmTC_0af62.dir/build
+        gmake[1]: Entering directory '/workspace/HydroPlas/build/CMakeFiles/CMakeScratch/TryCompile-u5vKzq'
+        Building C object CMakeFiles/cmTC_0af62.dir/test_mpi.c.o
+        /usr/bin/gcc  -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi  -o CMakeFiles/cmTC_0af62.dir/test_mpi.c.o -c /workspace/HydroPlas/build/CMakeFiles/CMakeScratch/TryCompile-u5vKzq/test_mpi.c
+        Linking C executable cmTC_0af62
+        /usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_0af62.dir/link.txt --verbose=1
+        /usr/bin/gcc CMakeFiles/cmTC_0af62.dir/test_mpi.c.o -o cmTC_0af62  -Wl,-rpath,/usr/lib/x86_64-linux-gnu/openmpi/lib /usr/lib/x86_64-linux-gnu/openmpi/lib/libmpi.so 
+        gmake[1]: Leaving directory '/workspace/HydroPlas/build/CMakeFiles/CMakeScratch/TryCompile-u5vKzq'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/FindMPI.cmake:1278 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/FindMPI.cmake:1322 (_MPI_try_staged_settings)"
+      - "/usr/share/cmake-3.28/Modules/FindMPI.cmake:1645 (_MPI_check_lang_works)"
+      - "CMakeLists.txt:23 (find_package)"
+    description: "The MPI test test_mpi for CXX in mode normal"
+    directories:
+      source: "/workspace/HydroPlas/build/CMakeFiles/CMakeScratch/TryCompile-oFnN6R"
+      binary: "/workspace/HydroPlas/build/CMakeFiles/CMakeScratch/TryCompile-oFnN6R"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_CXX_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+    buildResult:
+      variable: "MPI_RESULT_CXX_test_mpi_normal"
+      cached: true
+      stdout: |
+        Change Dir: '/workspace/HydroPlas/build/CMakeFiles/CMakeScratch/TryCompile-oFnN6R'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_2f455/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_2f455.dir/build.make CMakeFiles/cmTC_2f455.dir/build
+        gmake[1]: Entering directory '/workspace/HydroPlas/build/CMakeFiles/CMakeScratch/TryCompile-oFnN6R'
+        Building CXX object CMakeFiles/cmTC_2f455.dir/test_mpi.cpp.o
+        /usr/bin/g++  -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=gnu++20 -o CMakeFiles/cmTC_2f455.dir/test_mpi.cpp.o -c /workspace/HydroPlas/build/CMakeFiles/CMakeScratch/TryCompile-oFnN6R/test_mpi.cpp
+        Linking CXX executable cmTC_2f455
+        /usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_2f455.dir/link.txt --verbose=1
+        /usr/bin/g++ CMakeFiles/cmTC_2f455.dir/test_mpi.cpp.o -o cmTC_2f455  -Wl,-rpath,/usr/lib/x86_64-linux-gnu/openmpi/lib /usr/lib/x86_64-linux-gnu/openmpi/lib/libmpi_cxx.so /usr/lib/x86_64-linux-gnu/openmpi/lib/libmpi.so 
+        gmake[1]: Leaving directory '/workspace/HydroPlas/build/CMakeFiles/CMakeScratch/TryCompile-oFnN6R'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/FindMPI.cmake:1278 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/FindMPI.cmake:1672 (_MPI_try_staged_settings)"
+      - "CMakeLists.txt:23 (find_package)"
+    description: "The MPI test test_mpi for CXX in mode MPICXX"
+    directories:
+      source: "/workspace/HydroPlas/build/CMakeFiles/CMakeScratch/TryCompile-saGZuC"
+      binary: "/workspace/HydroPlas/build/CMakeFiles/CMakeScratch/TryCompile-saGZuC"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_CXX_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+    buildResult:
+      variable: "MPI_RESULT_CXX_test_mpi_MPICXX"
+      cached: true
+      stdout: |
+        Change Dir: '/workspace/HydroPlas/build/CMakeFiles/CMakeScratch/TryCompile-saGZuC'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_2b364/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_2b364.dir/build.make CMakeFiles/cmTC_2b364.dir/build
+        gmake[1]: Entering directory '/workspace/HydroPlas/build/CMakeFiles/CMakeScratch/TryCompile-saGZuC'
+        Building CXX object CMakeFiles/cmTC_2b364.dir/test_mpi.cpp.o
+        /usr/bin/g++  -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -std=gnu++20 -o CMakeFiles/cmTC_2b364.dir/test_mpi.cpp.o -c /workspace/HydroPlas/build/CMakeFiles/CMakeScratch/TryCompile-saGZuC/test_mpi.cpp
+        Linking CXX executable cmTC_2b364
+        /usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_2b364.dir/link.txt --verbose=1
+        /usr/bin/g++ CMakeFiles/cmTC_2b364.dir/test_mpi.cpp.o -o cmTC_2b364  -Wl,-rpath,/usr/lib/x86_64-linux-gnu/openmpi/lib /usr/lib/x86_64-linux-gnu/openmpi/lib/libmpi_cxx.so /usr/lib/x86_64-linux-gnu/openmpi/lib/libmpi.so 
+        gmake[1]: Leaving directory '/workspace/HydroPlas/build/CMakeFiles/CMakeScratch/TryCompile-saGZuC'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/usr/share/cmake-3.28/Modules/FindHDF5.cmake:238 (try_compile)"
+      - "/usr/share/cmake-3.28/Modules/FindHDF5.cmake:608 (_HDF5_test_regular_compiler_C)"
+      - "CMakeLists.txt:26 (find_package)"
+    directories:
+      source: "/workspace/HydroPlas/build/CMakeFiles/CMakeScratch/TryCompile-tydu9e"
+      binary: "/workspace/HydroPlas/build/CMakeFiles/CMakeScratch/TryCompile-tydu9e"
+    cmakeVariables:
+      CMAKE_C_FLAGS: ""
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+    buildResult:
+      variable: "HDF5_C_COMPILER_NO_INTERROGATE"
+      cached: true
+      stdout: |
+        Change Dir: '/workspace/HydroPlas/build/CMakeFiles/CMakeScratch/TryCompile-tydu9e'
+        
+        Run Build Command(s): /usr/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_85cdd/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_85cdd.dir/build.make CMakeFiles/cmTC_85cdd.dir/build
+        gmake[1]: Entering directory '/workspace/HydroPlas/build/CMakeFiles/CMakeScratch/TryCompile-tydu9e'
+        Building C object CMakeFiles/cmTC_85cdd.dir/cmake_hdf5_test.c.o
+        /usr/bin/gcc    -o CMakeFiles/cmTC_85cdd.dir/cmake_hdf5_test.c.o -c /workspace/HydroPlas/build/CMakeFiles/hdf5/cmake_hdf5_test.c
+        /workspace/HydroPlas/build/CMakeFiles/hdf5/cmake_hdf5_test.c:1:10: fatal error: hdf5.h: No such file or directory
+            1 | #include <hdf5.h>
+              |          ^~~~~~~~
+        compilation terminated.
+        gmake[1]: *** [CMakeFiles/cmTC_85cdd.dir/build.make:78: CMakeFiles/cmTC_85cdd.dir/cmake_hdf5_test.c.o] Error 1
+        gmake[1]: Leaving directory '/workspace/HydroPlas/build/CMakeFiles/CMakeScratch/TryCompile-tydu9e'
+        gmake: *** [Makefile:127: cmTC_85cdd/fast] Error 2
+        
+      exitCode: 2
+...

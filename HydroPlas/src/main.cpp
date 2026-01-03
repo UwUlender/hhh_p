@@ -48,7 +48,7 @@ int main(int argc, char **argv) {
         solver.initialize(); 
         
         PetscPrintf(PETSC_COMM_WORLD, "Initializing Output...\n");
-        OutputManager output(config.output, grid);
+        OutputManager output(config.output, grid, chemistry);
         output.write_mesh();
         
         double t = 0.0;

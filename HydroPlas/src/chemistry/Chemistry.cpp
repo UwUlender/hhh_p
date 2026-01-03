@@ -42,6 +42,7 @@ void Chemistry::parse_reactions(const std::vector<ReactionConfig>& r_configs) {
         r.A = rc.a;
         r.b = rc.b;
         r.E_a = rc.e_a;
+        r.name = rc.name_for_output; // Assign output name
         
         // Load rate table if specified
         if (rc.rate_type == "table" && !rc.table_file.empty()) {

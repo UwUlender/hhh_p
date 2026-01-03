@@ -372,4 +372,10 @@ CMakeFiles/HydroPlas.dir/src/io/OutputManager.cpp.o: \
  /workspace/HydroPlas/build/_deps/yaml-cpp-src/include/yaml-cpp/node/detail/impl.h \
  /workspace/HydroPlas/build/_deps/yaml-cpp-src/include/yaml-cpp/node/parse.h \
  /workspace/HydroPlas/build/_deps/yaml-cpp-src/include/yaml-cpp/node/emit.h \
- /usr/include/c++/13/iostream
+ /workspace/HydroPlas/src/io/../chemistry/Chemistry.hpp \
+ /workspace/HydroPlas/src/io/../chemistry/Species.hpp \
+ /workspace/HydroPlas/src/io/../chemistry/LookupTable.hpp \
+ /workspace/HydroPlas/src/io/../chemistry/../numerics/EquationEvaluator.hpp \
+ /usr/include/c++/13/stack /usr/include/c++/13/deque \
+ /usr/include/c++/13/bits/stl_deque.h /usr/include/c++/13/bits/deque.tcc \
+ /usr/include/c++/13/bits/stl_stack.h /usr/include/c++/13/iostream

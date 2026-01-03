@@ -34,11 +34,26 @@ def process_output(filename, output_dir="plots"):
             # Get data for last step
             group = f[f'data/step_{last_step}']
             
-            n_e = group['n_0'][0, :] # Assuming 1D row 0
-            n_Ar_plus = group['n_1'][0, :]
-            n_Ar_meta = group['n_2'][0, :]
+            # Updated keys with names
+            n_e = group['n_e'][0, :] 
+            n_Ar_plus = group['n_Ar+'][0, :]
+            n_Ar_meta = group['n_Ar1s5'][0, :]
             n_eps = group['n_eps'][0, :]
             phi = group['phi'][0, :]
+            
+            # Plot Electric Field if available
+            if 'electric_field' in group:
+                e_field = group['electric_field'][0, :]
+                plt.figure(figsize=(10, 6))
+                plt.plot(x, e_field, label='Electric Field')
+                plt.xlabel('Position (m)')
+                plt.ylabel('Electric Field (V/m)')
+                plt.title(f'Electric Field at Step {last_step}')
+                plt.legend()
+                plt.grid(True)
+                plt.savefig(f"{output_dir}/efield_step_{last_step}.png")
+                plt.close()
+
             
             # Plot Densities
             plt.figure(figsize=(10, 6))
