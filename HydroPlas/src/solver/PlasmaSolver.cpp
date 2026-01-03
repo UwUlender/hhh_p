@@ -120,6 +120,12 @@ void PlasmaSolver::solve_step(double dt, double time) {
     
     // Solve
     SNESSolve(snes_, NULL, X_);
+    
+    SNESConvergedReason reason;
+    SNESGetConvergedReason(snes_, &reason);
+    if (reason < 0) {
+        PetscPrintf(PETSC_COMM_WORLD, "SNES Diverged at time %g, reason: %d\n", time, reason);
+    }
 }
 
 void PlasmaSolver::save_state(const std::string& filename, int step, double time) {
@@ -598,6 +604,15 @@ PetscErrorCode FormFunction(SNES snes, Vec X, Vec F, void* ctx_void) {
     ierr = DMRestoreLocalVector(dm, &X_prev_loc); CHKERRQ(ierr);
     ierr = DMRestoreLocalVector(dm, &Xloc); CHKERRQ(ierr);
     
+    // Debug: Print Residual Norm
+    double norm;
+    VecNorm(F, NORM_2, &norm);
+    static int print_count = 0;
+    if (print_count < 20) {
+        PetscPrintf(PETSC_COMM_WORLD, "FormFunction called. Time: %g, Residual Norm: %g\n", ctx->time, norm);
+        print_count++;
+    }
+
     return 0;
 }
 
@@ -624,6 +639,9 @@ PetscErrorCode FormJacobian(SNES snes, Vec X, Mat J, Mat P, void* ctx_void) {
     int idx_phi = ctx->idx_phi;
     double dt = ctx->dt;
     
+    // Grid spacing (assuming uniform for preconditioner simplified logic)
+    // Or better, get from grid object
+    
     for (int j=ys; j<ys+ym; ++j) {
         for (int i=xs; i<xs+xm; ++i) {
              MatStencil row;
@@ -636,11 +654,39 @@ PetscErrorCode FormJacobian(SNES snes, Vec X, Mat J, Mat P, void* ctx_void) {
                  MatSetValuesStencil(P, 1, &row, 1, &row, &val, INSERT_VALUES);
              }
              
-             // Poisson: Laplacian (simplified - just diagonal for now)
+             // Poisson: Laplacian
+             // -eps * d2phi/dx2
+             // approx -eps * (phi_{i+1} - 2 phi_i + phi_{i-1}) / dx^2
+             // Diag: 2*eps/dx^2. Off-diag: -eps/dx^2.
+             double eps0 = 8.854e-12;
+             double dx = grid->get_dx(i);
+             double val = eps0 / (dx*dx);
+             
              row.c = idx_phi;
-             double v_diag = 2.0; // Simplified
-             MatSetValuesStencil(P, 1, &row, 1, &row, &v_diag, INSERT_VALUES);
-             // Neighbors...
+             MatStencil cols[3];
+             double vals[3];
+             int num_cols = 0;
+             
+             // Center
+             cols[num_cols].i = i; cols[num_cols].j = j; cols[num_cols].c = idx_phi;
+             vals[num_cols] = 2.0 * val;
+             num_cols++;
+             
+             // Left
+             if (i > 0) {
+                 cols[num_cols].i = i-1; cols[num_cols].j = j; cols[num_cols].c = idx_phi;
+                 vals[num_cols] = -1.0 * val;
+                 num_cols++;
+             }
+             
+             // Right
+             if (i < grid->get_nx() - 1) {
+                 cols[num_cols].i = i+1; cols[num_cols].j = j; cols[num_cols].c = idx_phi;
+                 vals[num_cols] = -1.0 * val;
+                 num_cols++;
+             }
+             
+             MatSetValuesStencil(P, 1, &row, num_cols, cols, vals, INSERT_VALUES);
         }
     }
     
