@@ -14,6 +14,11 @@ int main(int argc, char **argv) {
     PetscErrorCode ierr;
     ierr = PetscInitialize(&argc, &argv, (char*)0, help); if (ierr) return ierr;
 
+    PetscMPIInt rank, size;
+    MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+    MPI_Comm_size(PETSC_COMM_WORLD, &size);
+    PetscPrintf(PETSC_COMM_WORLD, "Running on %d MPI processes\n", size);
+
     std::string config_file = "config/default_config.yaml";
     char conf[256];
     PetscBool flg;
