@@ -64,7 +64,7 @@ reactions:
     type: ionization
     energy_change: -15.7
     rate_type: table
-    table_file: data/ar_ionization.txt # BOLSIG+ format ( ): Energy Electron (eV) | Reaction Coefficient (*N_A (Avogadro Number))
+    table_file: data/ar_ionization_mc_red.txt # BOLSIG+ format ( ): Energy Electron (eV) | Reaction Coefficient (*N_A (Avogadro Number))
     
   - equation: "e + Ar -> e + Ar"
     name_for_output: elast1
