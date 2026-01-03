@@ -6,9 +6,19 @@
 namespace HydroPlas {
 
 Chemistry::Chemistry(const SimulationConfig& config) {
+    // Calculate neutral gas density N = P / (k_B * T)
+    // k_B = 1.380649e-23
+    double k_B = 1.380649e-23;
+    double N_gas = config.plasma.gas_pressure / (k_B * config.plasma.background_temp);
+    
     // Initialize Species
     for (const auto& sc : config.species) {
         species_.emplace_back(sc);
+        // Scale mobility/diffusion if loaded from table
+        // Table values are multiplied by N, so we divide by N
+        if (species_.back().has_lookup) {
+            species_.back().lookup_table.scale_transport(1.0 / N_gas);
+        }
     }
     
     // Initialize Reactions
@@ -36,6 +46,11 @@ void Chemistry::parse_reactions(const std::vector<ReactionConfig>& r_configs) {
         if (rc.rate_type == "table" && !rc.table_file.empty()) {
             r.rate_table.load_rate(rc.table_file);
             r.has_rate_table = true;
+            
+            // Table values are multiplied by Avogadro constant N_A
+            // So we divide by N_A to get the actual rate coefficient
+            double N_A = 6.02214076e23;
+            r.rate_table.scale_rate(1.0 / N_A);
         }
         
         // Parse equation if specified

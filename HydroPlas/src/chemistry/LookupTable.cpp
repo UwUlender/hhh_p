@@ -104,4 +104,13 @@ double LookupTable::get_rate(double energy) const {
     return interpolate(energy_grid_, rate_data_, energy);
 }
 
+void LookupTable::scale_transport(double factor) {
+    for (auto& val : mobility_data_) val *= factor;
+    for (auto& val : diffusion_data_) val *= factor;
+}
+
+void LookupTable::scale_rate(double factor) {
+    for (auto& val : rate_data_) val *= factor;
+}
+
 } // namespace HydroPlas
