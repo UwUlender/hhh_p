@@ -234,12 +234,13 @@ PetscErrorCode FormFunction(SNES snes, Vec X, Vec F, void* ctx_void) {
     // Access arrays
     PetscScalar ***x, ***x_prev, ***f;
     ierr = DMDAVecGetArrayDOF(dm, Xloc, &x); CHKERRQ(ierr);
-    ierr = DMDAVecGetArrayDOF(dm, ctx->X_prev, &x_prev); CHKERRQ(ierr); // X_prev is global, but we need local part...
-    // X_prev is stored as global vector. To get ghost values, we need a local version too.
-    // For time term (x - x_prev)/dt, we only need local values (no gradients of x_prev).
-    // So DMDAVecGetArrayDOF on global X_prev works for local part.
-    // Wait, DMDAVecGetArrayDOF on global vector gives access to local portion. 
-    // Ghosts are invalid unless we scatter. But we don't need ghosts of x_prev for time term.
+
+    // Create local vector for X_prev to safely access it via DMDAVecGetArrayDOF
+    Vec X_prev_loc;
+    ierr = DMGetLocalVector(dm, &X_prev_loc); CHKERRQ(ierr);
+    ierr = DMGlobalToLocalBegin(dm, ctx->X_prev, INSERT_VALUES, X_prev_loc); CHKERRQ(ierr);
+    ierr = DMGlobalToLocalEnd(dm, ctx->X_prev, INSERT_VALUES, X_prev_loc); CHKERRQ(ierr);
+    ierr = DMDAVecGetArrayDOF(dm, X_prev_loc, &x_prev); CHKERRQ(ierr);
     
     ierr = DMDAVecGetArrayDOF(dm, F, &f); CHKERRQ(ierr);
     
@@ -600,8 +601,9 @@ PetscErrorCode FormFunction(SNES snes, Vec X, Vec F, void* ctx_void) {
     }
 
     ierr = DMDAVecRestoreArrayDOF(dm, Xloc, &x); CHKERRQ(ierr);
-    ierr = DMDAVecRestoreArrayDOF(dm, ctx->X_prev, &x_prev); CHKERRQ(ierr);
+    ierr = DMDAVecRestoreArrayDOF(dm, X_prev_loc, &x_prev); CHKERRQ(ierr);
     ierr = DMDAVecRestoreArrayDOF(dm, F, &f); CHKERRQ(ierr);
+    ierr = DMRestoreLocalVector(dm, &X_prev_loc); CHKERRQ(ierr);
     ierr = DMRestoreLocalVector(dm, &Xloc); CHKERRQ(ierr);
     
     return 0;
