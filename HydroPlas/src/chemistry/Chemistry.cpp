@@ -2,6 +2,7 @@
 #include <cmath>
 #include <regex>
 #include <iostream>
+#include <stdexcept>
 
 namespace HydroPlas {
 
@@ -44,7 +45,9 @@ void Chemistry::parse_reactions(const std::vector<ReactionConfig>& r_configs) {
         
         // Load rate table if specified
         if (rc.rate_type == "table" && !rc.table_file.empty()) {
-            r.rate_table.load_rate(rc.table_file);
+            if (!r.rate_table.load_rate(rc.table_file)) {
+                 throw std::runtime_error("Failed to load rate table: " + rc.table_file);
+            }
             r.has_rate_table = true;
             
             // Table values are multiplied by Avogadro constant N_A
