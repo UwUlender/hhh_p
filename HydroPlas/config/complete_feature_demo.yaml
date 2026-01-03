@@ -75,7 +75,7 @@ species:
     charge: -1.0                  # Elementary charge units
     mass: 9.10938e-31            # kg
     diffusion_coeff: 0.0         # Not used (from table)
-    mobility_file: data/transport.dat  # BOLSIG+ format: Energy | Mobility | Diffusion
+    mobility_file: data/elec-mod-diff.txt  # BOLSIG+ format (table in file depends on pressure): Energy Electron (eV) | Mobility (*nuN) | Diffusion (*nuN)
     
   # Argon ion
   - name: Ar+
@@ -109,7 +109,7 @@ reactions:
     a: 0.0                        # Not used for table type
     b: 0.0
     e_a: 0.0
-    table_file: data/Ar_ionization.dat  # Format: Energy(eV) | Rate(m^3/s)
+    table_file: data/ar_ion.txt # BOLSIG+ format ( ): Energy Electron (eV) | Reaction Coefficient(*N_A (Avogadro Number))
     
   # Excitation: e + Ar -> e + Ar*
   - equation: "e + Ar -> e + Ar*"
